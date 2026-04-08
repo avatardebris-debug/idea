@@ -472,7 +472,9 @@ def run_experiment_loop(
     token_budget: int | None = None,
     autoapprove: bool = False,
     meta_eval_interval: int = 50,
-):
+    validation_interval: int = 50,    # 0 = disabled
+    raw_baseline_interval: int = 20,  # 0 = disabled
+) -> None:
     """The main AutoResearch-style NEVER-STOP experiment loop (Phase 5).
 
     LOOP (while session allows):
@@ -506,6 +508,27 @@ def run_experiment_loop(
     score_history:  list[float] = []  # all scores for plateau detection
     tried_descriptions: set[str] = set()  # reflection insights tried this session
 
+    # Phase 6b: hypothesis store — load once, persist at end of each session
+    try:
+        from hypothesis_store import HypothesisStore
+        hyp_store = HypothesisStore()
+        hyp_store.load()
+        hyp_store.decay_stale(sessions_elapsed=1)
+        hs_summary = hyp_store.summary()
+        logger.info("HypothesisStore: %s", hs_summary)
+    except Exception as e:
+        hyp_store = None
+        logger.warning("HypothesisStore unavailable: %s", e)
+
+    # Phase 6c: validation runner
+    val_runner = None
+    if validation_interval > 0:
+        try:
+            from validation_runner import ValidationRunner
+            val_runner = ValidationRunner(provider=provider, model=model)
+        except Exception as e:
+            logger.warning("ValidationRunner unavailable: %s", e)
+
     # D7 FIX: seed the baseline window from the tracker's recorded history so
     # statistical gates activate immediately on resume rather than waiting for
     # enough discard-run scores to accumulate in this session.
@@ -528,6 +551,8 @@ def run_experiment_loop(
     print(f"[Session] Autoapprove:      {session.autoapprove}")
     print(f"[Session] Benchmark tasks:  {len(tasks)}")
     print(f"[Session] Starting from:    experiment {session.experiment_number + 1}")
+    print(f"[Session] Validation:       every {validation_interval} exp" if validation_interval > 0 else "[Session] Validation:       disabled")
+    print(f"[Session] Raw baseline:     every {raw_baseline_interval} exp" if raw_baseline_interval > 0 else "[Session] Raw baseline:     disabled")
     print(f"[Session] Baseline score:   {tracker.baseline:.4f}")
     print(f"[Session] Trend:            {tracker.trend:+.4f}")
     print(f"[Session] Agent population: {len([a for a in agents if a.active])} active")
@@ -739,6 +764,38 @@ def run_experiment_loop(
             if session.should_checkpoint():
                 session.save_checkpoint(tracker)
 
+            # ── Phase 6c: Held-out validation check ───────────────────
+            if (val_runner is not None
+                    and validation_interval > 0
+                    and experiment_num % validation_interval == 0
+                    and not session.should_stop):
+                recent_avg = sum(score_history[-10:]) / len(score_history[-10:]) if score_history else 0.0
+                try:
+                    val_report = val_runner.run(
+                        experiment_number=experiment_num,
+                        training_score=recent_avg,
+                        constitution=constitution,
+                    )
+                    is_overfit, overfit_msg = val_runner.check_overfitting()
+                    if is_overfit:
+                        print(f"  ⚠️  {overfit_msg}")
+                        logger.warning(overfit_msg)
+                    else:
+                        print(f"  ✓ No overfitting: {overfit_msg}")
+                except Exception as e:
+                    logger.warning("Validation run failed: %s", e)
+
+            # ── Phase 6b: Hypothesis store decay + save ────────────────
+            if hyp_store is not None and experiment_num % 10 == 0:
+                try:
+                    hyp_store.save()
+                    hs = hyp_store.summary()
+                    confirmed = hyp_store.get_confirmed()
+                    if confirmed:
+                        print(f"  [Hypotheses] {hs} | {len(confirmed)} confirmed")
+                except Exception as e:
+                    logger.warning("HypothesisStore save failed: %s", e)
+
             # Interactive mode
             if interactive and not session.should_stop:
                 user_input = input("\n>>> [Enter to continue, 'q' to quit, or type a custom task] ").strip()
@@ -826,6 +883,10 @@ Examples:
                         help="Skip critic evaluation (faster, less accurate)")
     parser.add_argument("--meta-eval-interval", type=int, default=50,
                         help="Structural meta-evaluation frequency in experiments (default: 50)")
+    parser.add_argument("--validation-interval", type=int, default=50,
+                        help="Held-out validation frequency in experiments; 0=disabled (default: 50)")
+    parser.add_argument("--raw-baseline-interval", type=int, default=0,
+                        help="Raw LLM baseline frequency in experiments; 0=disabled (default: 0)")
 
     args = parser.parse_args()
 
@@ -844,6 +905,8 @@ Examples:
         token_budget=args.token_budget,
         autoapprove=args.autoapprove,
         meta_eval_interval=args.meta_eval_interval,
+        validation_interval=args.validation_interval,
+        raw_baseline_interval=args.raw_baseline_interval,
     )
 
 

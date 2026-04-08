@@ -38,6 +38,15 @@ AUDIT_PATH = pathlib.Path(".agent/audit.jsonl")
 REFLECTIONS_PATH = pathlib.Path(".agent/reflections.jsonl")
 DERIVED_VALUES_PATH = pathlib.Path(".agent/derived_values.jsonl")
 
+# Optional hypothesis store — loaded lazily so reflection.py has no hard dep
+def _get_hypothesis_store():
+    """Return hypothesis store if available, else None."""
+    try:
+        from hypothesis_store import get_store
+        return get_store()
+    except ImportError:
+        return None
+
 
 # ---------------------------------------------------------------------------
 # Data model
@@ -462,10 +471,15 @@ def _insight_key(text: str) -> str:
 
 
 def _save_reflections(report: ReflectionReport) -> None:
-    """Append reflection insights to the reflections log (deduplicating)."""
-    REFLECTIONS_PATH.parent.mkdir(parents=True, exist_ok=True)
+    """Append reflection insights to the reflections log.
 
-    # Build set of already-seen insight hashes
+    Level-3 insights (derived values) are routed through the hypothesis
+    store's novelty gate — duplicates are silently dropped.
+    """
+    REFLECTIONS_PATH.parent.mkdir(parents=True, exist_ok=True)
+    store = _get_hypothesis_store()
+
+    # Build set of already-seen insight hashes (for raw reflections.jsonl dedup)
     existing_keys: set[str] = set()
     for entry in _load_jsonl(REFLECTIONS_PATH):
         if "insight" in entry:
@@ -481,7 +495,7 @@ def _save_reflections(report: ReflectionReport) -> None:
             for insight in new_insights:
                 f.write(json.dumps(insight.to_dict()) + "\n")
 
-    # Save derived values separately for easy consumption (deduplicated)
+    # Save derived values — route through hypothesis store for novelty gating
     derived = [r for r in report.level_3_insights if r.derived_value]
     if derived:
         existing_dv_keys: set[str] = set()
@@ -499,6 +513,25 @@ def _save_reflections(report: ReflectionReport) -> None:
                         "evidence": r.evidence,
                         "timestamp": r.timestamp,
                     }) + "\n")
+
+                # Also add to hypothesis store with novelty check
+                if store:
+                    category = "tool_use" if "blocked" in r.derived_value.lower() else "strategy"
+                    added = store.add_if_novel(
+                        text=r.derived_value,
+                        category=category,
+                        source="reflection",
+                        confidence=r.confidence,
+                    )
+                    if added:
+                        logger.info("[HypothesisStore] New hypothesis added from reflection")
+
+    # Persist hypothesis store after any updates
+    if store:
+        try:
+            store.save()
+        except Exception as e:
+            logger.warning("HypothesisStore save failed: %s", e)
 
 
 def load_derived_values(path: pathlib.Path | None = None) -> list[dict]:

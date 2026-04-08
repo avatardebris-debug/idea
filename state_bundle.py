@@ -51,6 +51,12 @@ STATE_ITEMS = [
 
     # Pending approval queue
     ".agent/pending_approvals.jsonl",
+
+    # Phase 6b: persistent hypothesis memory
+    ".agent/hypotheses.jsonl",
+
+    # Phase 6c: validation history (held-out benchmarks)
+    ".agent/validation_log.jsonl",
 ]
 
 # Files to NEVER include (security, large binaries, etc.)
