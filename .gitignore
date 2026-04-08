@@ -25,6 +25,10 @@ autoresearch-master*/
 deep_rl_zoo-main*/
 hermes-agent-main/
 meta-harness-tbench2-artifact-main/
+HyperAgents/
+HyperAgents-main/
+self_improving_coding_agent/
+SICA/
 
 # --- Runtime state (use state_bundle.py to transfer, not git) ---
 experiments.tsv
