@@ -1,0 +1,57 @@
+# ============================================================
+# Cognitive Architecture — .gitignore
+# ============================================================
+
+# --- Python ---
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+*.egg
+dist/
+build/
+.eggs/
+
+# --- Virtual environments ---
+.venv/
+venv/
+env/
+
+# --- Reference projects (design inspiration, not our code) ---
+AutoAgent-main/
+AutoHarness-main/
+MiroFish-main/
+autoresearch-master*/
+deep_rl_zoo-main*/
+hermes-agent-main/
+meta-harness-tbench2-artifact-main/
+
+# --- Runtime state (use state_bundle.py to transfer, not git) ---
+experiments.tsv
+.agent/audit.jsonl
+.agent/pending_approvals.jsonl
+.agent/cloud_config.json
+state_*.tar.gz
+
+# --- Test artifacts ---
+.pytest_cache/
+test_output.txt
+htmlcov/
+.coverage
+
+# --- OS junk ---
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# --- IDE ---
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# --- Model weights (never commit these) ---
+*.bin
+*.gguf
+*.safetensors
+*.onnx
