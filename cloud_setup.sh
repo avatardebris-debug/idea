@@ -94,6 +94,21 @@ source "${AGENT_DIR}/.venv/bin/activate"
 pip install -q --upgrade pip
 pip install -q ollama
 
+echo "  Downloading HumanEval dataset..."
+python3 -c "
+import urllib.request, pathlib
+dest = pathlib.Path('benchmarks/datasets/HumanEval.jsonl.gz')
+dest.parent.mkdir(parents=True, exist_ok=True)
+if not dest.exists():
+    urllib.request.urlretrieve(
+        'https://github.com/openai/human-eval/raw/master/data/HumanEval.jsonl.gz',
+        str(dest)
+    )
+    print('  Downloaded HumanEval.jsonl.gz')
+else:
+    print('  HumanEval dataset already present')
+"
+
 echo "  ✓ Python environment ready"
 
 # --- 6. Write the model config ---

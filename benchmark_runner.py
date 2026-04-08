@@ -65,17 +65,40 @@ class BenchmarkTask:
         return asdict(self)
 
 
-def load_tasks(path: pathlib.Path | None = None) -> list[BenchmarkTask]:
-    """Load benchmark tasks from JSON file."""
+def load_tasks(
+    path: pathlib.Path | None = None,
+    include_humaneval: bool = True,
+    humaneval_count: int = 40,
+) -> list[BenchmarkTask]:
+    """Load benchmark tasks from JSON file, optionally including HumanEval.
+
+    Args:
+        path:              Override path to tasks.json.
+        include_humaneval: Also load HumanEval code-gen tasks if dataset exists.
+        humaneval_count:   How many HumanEval tasks to include (default 40).
+    """
     p = path or TASKS_PATH
-    if not p.exists():
+    tasks: list[BenchmarkTask] = []
+
+    if p.exists():
+        with open(p, encoding="utf-8") as f:
+            data = json.load(f)
+        tasks = [BenchmarkTask.from_dict(t) for t in data]
+    else:
         logger.error("Tasks file not found: %s", p)
-        return []
 
-    with open(p, encoding="utf-8") as f:
-        data = json.load(f)
+    if include_humaneval:
+        try:
+            from benchmarks.adapters.humaneval_adapter import load_humaneval_tasks
+            he_tasks = load_humaneval_tasks(max_tasks=humaneval_count)
+            tasks = tasks + he_tasks
+            logger.info("Loaded %d HumanEval tasks (total: %d)", len(he_tasks), len(tasks))
+        except FileNotFoundError:
+            logger.info("HumanEval dataset not found — skipping (run download script to enable)")
+        except Exception as e:
+            logger.warning("HumanEval load failed: %s", e)
 
-    return [BenchmarkTask.from_dict(t) for t in data]
+    return tasks
 
 
 # ---------------------------------------------------------------------------

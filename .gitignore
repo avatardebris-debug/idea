@@ -59,3 +59,9 @@ desktop.ini
 *.gguf
 *.safetensors
 *.onnx
+
+# --- Downloaded benchmark datasets (fetched at setup time, not in git) ---
+benchmarks/datasets/
+
+# --- Scratch test scripts ---
+test_load_tasks.py
