@@ -260,6 +260,7 @@ def pick_experiment(
     experiment_number: int,
     audit_proposals: list | None = None,
     derived_values: list | None = None,
+    tried_descriptions: set[str] | None = None,
 ) -> Experiment:
     """3-channel experiment selection by maturity.
 
@@ -281,7 +282,6 @@ def pick_experiment(
     # C7 FIX: remove redundant initial assignment; channel set correctly in if/elif
     roll = random.random()
     if roll < weights[0]:
-
         channel = "random"
     elif roll < weights[0] + weights[1]:
         channel = "audit"
@@ -294,7 +294,7 @@ def pick_experiment(
         if exp:
             return exp
     if channel == "reflection" and derived_values:
-        exp = _experiment_from_reflection(derived_values)
+        exp = _experiment_from_reflection(derived_values, tried_descriptions)
         if exp:
             return exp
 
@@ -325,35 +325,34 @@ def _experiment_from_audit(proposals: list) -> Experiment | None:
     return None
 
 
-def _experiment_from_reflection(derived_values: list) -> Experiment | None:
-    """Convert a high-confidence derived value into a constitution change experiment.
+def _experiment_from_reflection(
+    derived_values: list,
+    tried_descriptions: set[str] | None = None,
+) -> Experiment | None:
+    """Convert a derived value into a constitution change experiment.
 
-    D5 FIX: loops all candidates looking for affirmation-specific ones first;
-    falls back to a generic amendment only after the loop is exhausted.
+    Rotates through all candidates so the same insight isn't retried
+    indefinitely. Constitution change: injects the derived value into
+    the agent's learned_behaviors section so it actually affects behaviour.
     """
+    tried = tried_descriptions or set()
     candidates = sorted(
         [v for v in derived_values if v.get("confidence", 0) >= 0.65],
         key=lambda v: v.get("confidence", 0), reverse=True,
     )
-    # First pass: look for affirmation-specific derived values
-    for v in candidates[:5]:
+    # Pick the first candidate whose description hasn't been tried this session
+    for v in candidates:
         value_text = v.get("value", "")
-        if "affirmation" in value_text.lower():
-            return Experiment(
-                type="reflection_derived",
-                description=f"[Reflection] {value_text[:80]}",
-                changes={"affirmation": {"enabled": True}},
-                rollback={},
-            )
-    # Second pass: generic amendment with the top candidate
-    if candidates:
-        value_text = candidates[0].get("value", "")
+        description = f"[Reflection] {value_text[:80]}"
+        if description in tried:
+            continue
         return Experiment(
             type="reflection_derived",
-            description=f"[Reflection] {value_text[:80]}",
-            changes={"derived_values": {"learned_amendment": value_text[:200]}},
-            rollback={},
+            description=description,
+            changes={"agent_behaviors": {"learned_rule": value_text[:200]}},
+            rollback={"agent_behaviors": {}},
         )
+    # All candidates have been tried — skip reflection this round
     return None
 
 
@@ -505,6 +504,7 @@ def run_experiment_loop(
     stats_engine   = make_stats_engine(constitution)
     meta_evaluator = MetaEvaluator(constitution)
     score_history:  list[float] = []  # all scores for plateau detection
+    tried_descriptions: set[str] = set()  # reflection insights tried this session
 
     # D7 FIX: seed the baseline window from the tracker's recorded history so
     # statistical gates activate immediately on resume rather than waiting for
@@ -549,6 +549,7 @@ def run_experiment_loop(
                 constitution, experiment_num,
                 audit_proposals=audit_proposals,
                 derived_values=derived_values_data,
+                tried_descriptions=tried_descriptions,
             )
             print(f"[Experiment {experiment_num}] {experiment.description}")
             if session.token_budget:
@@ -665,6 +666,9 @@ def run_experiment_loop(
                 cohen_d=decision.cohen_d_val,
                 plateau_confidence=plateau.confidence if plateau else None,
             )
+
+            # Track used descriptions so reflection rotates
+            tried_descriptions.add(experiment.description)
 
             session.tick()
 
