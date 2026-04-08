@@ -257,6 +257,36 @@ class OllamaAdapter(LLMBase):
         self.temperature = temperature
         self.base_url = (base_url or "http://localhost:11434").rstrip("/")
 
+    def _normalize_messages(self, messages: list[dict]) -> list[dict]:
+        """
+        Ollama requires tool_call arguments as dicts, not JSON strings.
+        agent.py stores them as json.dumps() strings (OpenAI convention).
+        Convert before sending.
+        """
+        import json as _json
+        normalized = []
+        for msg in messages:
+            if msg.get("role") == "assistant" and msg.get("tool_calls"):
+                fixed_tcs = []
+                for tc in msg["tool_calls"]:
+                    fn = tc.get("function", {})
+                    args = fn.get("arguments", {})
+                    if isinstance(args, str):
+                        try:
+                            args = _json.loads(args)
+                        except _json.JSONDecodeError:
+                            args = {"raw": args}
+                    fixed_tcs.append({
+                        "id": tc.get("id", ""),
+                        "function": {
+                            "name": fn.get("name", ""),
+                            "arguments": args,   # must be dict for Ollama
+                        },
+                    })
+                msg = dict(msg, tool_calls=fixed_tcs)
+            normalized.append(msg)
+        return normalized
+
     def chat(self, messages, tools=None) -> Message:
         import json as _json
         import urllib.request
@@ -264,7 +294,7 @@ class OllamaAdapter(LLMBase):
 
         payload: dict[str, Any] = {
             "model": self.model,
-            "messages": messages,
+            "messages": self._normalize_messages(messages),
             "stream": False,
             "options": {"temperature": self.temperature},
         }
@@ -284,6 +314,9 @@ class OllamaAdapter(LLMBase):
         try:
             with urllib.request.urlopen(req, timeout=300) as resp:
                 raw = _json.loads(resp.read().decode("utf-8"))
+        except urllib.error.HTTPError as e:
+            body = e.read().decode("utf-8", errors="replace")[:400]
+            raise RuntimeError(f"Ollama HTTP {e.code}: {body}") from e
         except urllib.error.URLError as e:
             raise RuntimeError(f"Ollama connection failed: {e}") from e
 
