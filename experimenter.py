@@ -644,11 +644,13 @@ def run_experiment_loop(
                           f"| {decision.reason}")
             else:
                 status = decision.action  # "discard" or "insufficient_data"
-                # Discarded scores feed the baseline distribution
-                baseline_score_window.extend(experiment_scores)
-                baseline_score_window = baseline_score_window[-50:]  # rolling 50-sample window
                 print(f"  <<< {status.upper()}: {avg_score:.4f} vs baseline {baseline:.4f} "
                       f"| {decision.reason}")
+
+            # ALL experiments (kept or discarded) feed the baseline window
+            # so the stat test has enough samples regardless of keep rate
+            baseline_score_window.extend(experiment_scores)
+            baseline_score_window = baseline_score_window[-50:]
 
             # Record ALL results to tracker
             for r in experiment_results:
