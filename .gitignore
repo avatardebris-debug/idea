@@ -30,11 +30,10 @@ HyperAgents-main/
 self_improving_coding_agent/
 SICA/
 
-# --- Runtime state (use state_bundle.py to transfer, not git) ---
+# --- Runtime state (not committed — use resume to transfer) ---
+.pipeline/
+.agent/
 experiments.tsv
-.agent/audit.jsonl
-.agent/pending_approvals.jsonl
-.agent/cloud_config.json
 state_*.tar.gz
 
 # --- Test artifacts ---

@@ -1,202 +1,106 @@
-# Cognitive Agent — Self-Improving LLM Architecture
+# Idea Development Pipeline
 
-A 9-layer cognitive architecture for self-improving LLM agents. The system governs itself via a YAML constitution, evolves agent populations through fitness-based selection, and consolidates learning through scheduled reflection cycles.
+A multi-agent system that autonomously implements ideas. Give it an idea → it plans, codes, tests, reviews, and iterates — designed to run unattended for hours.
 
-**Model-agnostic, local-first.** Swap LLM providers with a single flag — no code changes required.
-
----
-
-## Quickstart
+## Quick Start
 
 ```bash
-# Install dependencies
-pip install openai           # or anthropic / google-generativeai / ollama
-pip install ruamel.yaml      # comment-preserving YAML for constitution updates
+# One idea, run until done
+python pipeline/runner.py "Build a CLI tool that converts markdown to HTML"
 
-# Run a single task
-python agent.py "Write a Python script that prints a multiplication table"
+# Run from your idea backlog (master_ideas.md)
+python pipeline/runner.py --from-list
 
-# Run with multi-agent orchestration
-python orchestrator.py "Read the requirements file, implement the solution, and write tests"
+# Run overnight with a time limit
+python pipeline/runner.py --from-list --provider ollama --model qwen3.5:35b --time-limit 480
 
-# Start the self-improving experiment loop (30 min session)
-python experimenter.py --time-limit 30 --provider ollama --model gemma:7b
-
-# View agent population and fitness
-python agent_factory.py --list
-
-# Run one evolution cycle
-python evolution.py --cycle
-
-# Run a reflection cycle
-python reflection.py --depth 3
+# Resume a stopped pipeline
+python pipeline/runner.py --resume
 ```
 
----
+## How It Works
 
-## Architecture
-
-```
-Phase 1 (Governance)    Phase 2 (Self-Improvement)    Phase 3 (Multi-Agent)
-─────────────────────   ──────────────────────────    ─────────────────────
-constitution.yaml       evaluation.py                 agent_factory.py
-governance.py           critic.py                     orchestrator.py
-agent.py                benchmark_runner.py           evolution.py
-llm_interface.py        experimenter.py               reflection.py
-tools.py                audit_analyzer.py
-```
-
-### Data Flow
+7 specialized agents run as subprocesses, communicating via file-based message queues:
 
 ```
-User Task
-    │
-    ▼
-orchestrator.py ─── is_complex_task()?
-    │                    │
-    │  Simple            │ Complex
-    │                    │
-    ▼                    ▼
-select_agent()     decompose_task()
-    │                    │
-    ▼                    ▼
-agent.py loop      execute_plan() ─── For each subtask:
-    │                    │              select_agent()
-    │                    │              run_agent_with_profile()
-    │                    │              update_fitness()
-    ▼                    ▼
-evaluation.py ◄── tokens, steps, messages
-    │
-    ▼
-experimenter.py (never-stop loop)
-    ├── reflection.py (every 10 exp + on plateau)
-    └── evolution.py (every 15 experiments)
+Idea → Idea Planner → Phase Planner → Executor → Validator → Reviewer → Manager
+                                         ↑                                  │
+                                         └──── fix bugs ───────────────────┘
+                                                                            │
+                                                              Ideator ◄─────┘
+                                                         (brainstorms next ideas)
 ```
 
----
+| Agent | Role |
+|---|---|
+| **Idea Planner** | Turns raw idea into multi-phase master plan |
+| **Phase Planner** | Decomposes each phase into 3-8 coding tasks |
+| **Executor** | Writes the actual code |
+| **Validator** | Runs tests + linting, gates quality |
+| **Reviewer** | Line-by-line code review |
+| **Manager** | Routes everything, manages queues, never interrupts (except emergencies) |
+| **Ideator** | Always-on brainstorming engine, generates 10-20 ideas per cycle |
 
 ## File Structure
 
 ```
-agent/
-├── agent.py              # Main agent loop (ReAct: Reason → Act → Observe)
-├── llm_interface.py      # Model-agnostic LLM adapter (OpenAI/Claude/Gemini/Ollama)
-├── tools.py              # File-tree tools + JSON schemas
-├── governance.py         # Constitutional governance gate
-├── constitution.yaml     # The Constitution — core values, drives, weights
+idea impl/
+├── pipeline/
+│   ├── runner.py              # Main entry point — starts everything
+│   ├── message_bus.py         # JSONL queue system
+│   ├── agent_process.py       # Base class for all agents
+│   ├── agents/                # 7 agent implementations
+│   └── prompts/               # System prompts (markdown, easy to edit)
 │
-├── evaluation.py         # 4-dimensional evaluation engine
-├── critic.py             # LLM-as-judge constitutional critic
-├── benchmark_runner.py   # Benchmark task runner with automated checks
-├── experimenter.py       # Never-stop experiment loop (Phase 2+3)
-├── audit_analyzer.py     # Pattern detection → derived value proposals
+├── agent.py                   # Core ReAct loop (used by all agents)
+├── llm_interface.py           # Model-agnostic LLM adapter
+├── tools.py                   # File tools (read, write, shell, etc.)
+├── governance.py              # Constitutional safety gate
+├── constitution.yaml          # Values, rules, quality standards
+├── master_ideas.md            # Your idea backlog (edit this!)
 │
-├── agent_factory.py      # Agent population management (Layer 6)
-├── orchestrator.py       # Multi-agent task coordination (Layer 4)
-├── evolution.py          # Fitness-based selection + mutation (Layer 6)
-├── reflection.py         # Scheduled reflection / dream cycle (Layer 3)
+├── .pipeline/                 # Runtime state (gitignored)
+│   ├── queues/                # Agent message queues
+│   ├── workspace/             # Code output
+│   ├── phases/                # Phase specs, tasks, reviews
+│   ├── ideator_output/        # Brainstorm archives
+│   └── logs/                  # Per-agent logs
 │
-├── benchmarks/
-│   └── tasks.json        # 12 benchmark tasks (8 simple + 4 compound)
-│
-├── test_governance.py    # 10 governance tests
-├── test_phase2.py        # 65 evaluation/critic/benchmark tests
-├── test_phase3.py        # 87 factory/orchestrator/evolution/reflection tests
-│
-└── .agent/               # Agent's persistent workspace (auto-created)
-    ├── agents.yaml       # Agent population profiles
-    ├── evaluations.jsonl # Evaluation history
-    ├── audit.jsonl       # Governance audit trail
-    ├── reflections.jsonl # Reflection insights
-    ├── derived_values.jsonl  # Extracted meta-patterns
-    ├── experiments.tsv   # Experiment log
-    └── memory/           # Agent's persistent memory
+└── _archive/                  # Original self-improvement system (preserved)
 ```
 
----
+## Configuration
+
+Edit `constitution.yaml` to tune:
+- **Quality standards** — test coverage targets, complexity limits
+- **Agent weights** — what each agent prioritizes
+- **Ideator settings** — firehose mode, rate limits, cooldowns
+- **Pipeline limits** — max steps per agent, timeouts
 
 ## Environment Variables
 
-| Provider | Environment Variable |
-|----------|---------------------|
-| OpenAI   | `OPENAI_API_KEY`    |
-| Claude   | `ANTHROPIC_API_KEY` |
-| Gemini   | `GOOGLE_API_KEY`    |
-| Ollama   | *(none — runs locally)* |
+| Provider | Variable |
+|---|---|
+| Ollama | *(none — runs locally)* |
+| OpenAI | `OPENAI_API_KEY` |
+| Claude | `ANTHROPIC_API_KEY` |
+| Gemini | `GOOGLE_API_KEY` |
 
 **Windows**: Set `PYTHONUTF8=1` for consistent encoding.
 
----
-
-## The Constitution
-
-The `constitution.yaml` defines the agent's values, drives, and behavior:
-
-- **Core Imperatives** (immutable): human wellbeing, transparency, human override
-- **Negative Imperatives** (immutable): no harm, no deception, no self-preservation over humans
-- **Internal Drives** (evolvable): curiosity, simplicity, novelty, systems-over-goals, etc.
-- **Evaluation Weights** (learnable): task_performance, constitutional_alignment, learning_efficiency, cost_efficiency
-- **Affirmation System**: periodic context injection of values and goals
-- **Amygdala Gate**: circuit breaker triggered by constitutional violations
-
----
-
-## CLI Reference
-
-### Agent
-```bash
-python agent.py <task> [--provider {openai,claude,gemini,ollama}] [--model MODEL] [--max-steps N]
-```
-
-### Orchestrator
-```bash
-python orchestrator.py <task> [--provider PROVIDER] [--model MODEL]
-python orchestrator.py --analyze "complex task description"  # plan without executing
-```
-
-### Experimenter
-```bash
-python experimenter.py [--time-limit MINUTES] [--provider PROVIDER] [--interactive] [--no-critic]
-```
-
-### Agent Factory
-```bash
-python agent_factory.py --list           # list all agents
-python agent_factory.py --spawn "role"   # create new agent from description
-python agent_factory.py --seed           # reset to seed profiles
-```
-
-### Evolution
-```bash
-python evolution.py --report    # show fitness report
-python evolution.py --cycle     # run one evolution cycle
-```
-
-### Reflection
-```bash
-python reflection.py --depth 3  # full reflection (replay + recombine + abstract)
-```
-
----
-
-## Future Work
-
-- **Model diversity per agent**: Architecture supports `AgentProfile.model_preference` for letting different agents use different LLM providers (e.g., Gemma for file ops, Gemini for reasoning). Deferred to reduce complexity.
-- **True async parallel execution**: Currently "parallel" subtasks run sequentially. Requires multiple model instances or concurrent API calls.
-- **LLM-based task decomposition**: Replace rule-based decomposition with LLM analysis for smarter subtask splitting.
-- **LLM-based agent spawning**: Currently heuristic; LLM could generate richer agent profiles from NL descriptions.
-- **Phase 4: Simulation Sandbox** (Layer 7): MiroFish-style testing of governance changes before deployment.
-- **Phase 5: Meta-Refactoring** (Layer 9): System evaluates and restructures its own organizational hierarchy.
-
----
-
-## Tests
+## Cloud Setup
 
 ```bash
-$env:PYTHONUTF8="1"
-python test_governance.py   # 10 tests — governance gate
-python test_phase2.py       # 65 tests — evaluation, critic, benchmarks
-python test_phase3.py       # 87 tests — factory, orchestrator, evolution, reflection
+chmod +x cloud_setup.sh
+./cloud_setup.sh
+# Then:
+python pipeline/runner.py --from-list --time-limit 480
 ```
 
-All 162 tests passing.
+## Future Hooks
+
+| Feature | How to add |
+|---|---|
+| **Auto-idea generator** | Add `idea_generator.py` that fills `master_ideas.md` autonomously |
+| **Fine-tuning dataset** | In executor, log successful `(prompt, code)` pairs to JSONL |
+| **Full self-improvement** | Bring back `_archive/experimenter.py` as `--evolve` mode |

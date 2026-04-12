@@ -1,20 +1,20 @@
 # ============================================================
-# THE CONSTITUTION — v0.1
+# THE CONSTITUTION — v2.0 (Idea Development Pipeline)
 # ============================================================
 # Core Imperatives and Negative Imperatives are IMMUTABLE.
-# Internal Drives, Derived Values, and Weights are EVOLVABLE.
+# Quality standards and agent weights are TUNABLE.
 # ============================================================
 
-# --- AutoHarness-compatible identity ---
+# --- Identity ---
 identity:
-  name: "cognitive-agent-v0.1"
-  description: "Governed LLM agent with self-improving constitution"
+  name: "idea-pipeline-v2.0"
+  description: "Multi-agent idea development pipeline with quality-driven governance"
   boundaries:
     - "All tool calls pass through governance pipeline"
     - "Destructive operations require confirmation"
     - "Audit trail is always preserved"
 
-# --- AutoHarness governance rules ---
+# --- Governance rules ---
 rules:
   - id: "no-harm-by-action"
     description: >
@@ -63,20 +63,21 @@ rules:
     severity: error
     enforcement: hook
 
-  - id: "prefer-simplicity"
-    description: "Prefer simple, minimal solutions over complex abstractions."
-    severity: warning
-    enforcement: prompt
-
-  - id: "systems-over-goals"
+  - id: "workspace-isolation"
     description: >
-      Prefer building repeatable systems and procedures over one-off goal
-      achievements. A system that produces results is worth more than a
-      single result.
+      Agents must only write code to .pipeline/workspace/.
+      Never modify files outside the designated output area.
+    severity: error
+    enforcement: hook
+
+  - id: "complete-implementations"
+    description: >
+      Never leave placeholder code, TODOs, or incomplete implementations.
+      Every function written must be functional.
     severity: warning
     enforcement: prompt
 
-# --- Tool permissions (AutoHarness format) ---
+# --- Tool permissions ---
 permissions:
   defaults:
     policy: "allow"
@@ -90,7 +91,7 @@ permissions:
         - 'rm\s+-rf\s+\$HOME'
         - 'mkfs\.'
         - 'dd\s+if=.*of=/dev/'
-        - ':\(\)\s*\{\s*:\|:\s*&\s*\}\s*;'
+        - ':\(\)\s*\{\s*:\|:\s*\&\s*\}\s*;'
         - 'chmod\s+-R\s+777\s+/'
         - 'curl\s+.*\|\s*(ba)?sh'
         - 'wget\s+.*\|\s*(ba)?sh'
@@ -135,10 +136,8 @@ audit:
   retention_days: 90
 
 # ============================================================
-# COGNITIVE EXTENSIONS (beyond AutoHarness)
+# CORE IMPERATIVES (immutable, positive obligations)
 # ============================================================
-
-# --- CORE IMPERATIVES (immutable, positive obligations) ---
 core_imperatives:
   human_wellbeing:
     description: >
@@ -168,7 +167,9 @@ core_imperatives:
     priority: ABSOLUTE
     mutable: false
 
-# --- NEGATIVE IMPERATIVES (immutable, avoidance obligations) ---
+# ============================================================
+# NEGATIVE IMPERATIVES (immutable, avoidance obligations)
+# ============================================================
 negative_imperatives:
   no_harm_by_action:
     description: >
@@ -200,7 +201,84 @@ negative_imperatives:
     mutable: false
     triggers_amygdala: true
 
-# --- INTERNAL DRIVES (evolvable motivational signals) ---
+# ============================================================
+# IDEA DEVELOPMENT QUALITY STANDARDS
+# ============================================================
+idea_quality:
+  # Quantitative measures (used by Validator)
+  test_coverage_target: 0.80
+  max_function_complexity: 10
+  max_file_lines: 300
+  lint_tolerance: "warnings_ok"     # errors block, warnings allowed
+
+  # Qualitative dimensions (assessed by Reviewer)
+  review_dimensions:
+    - correctness
+    - clarity
+    - completeness
+    - architecture
+    - testability
+
+# ============================================================
+# AGENT WEIGHTS — tune each agent's priorities
+# ============================================================
+agent_weights:
+  ideator:
+    novelty: 0.30
+    integration: 0.25
+    depth: 0.25
+    breadth: 0.20
+
+  executor:
+    correctness: 0.40
+    simplicity: 0.30
+    completeness: 0.30
+
+  reviewer:
+    bug_detection: 0.40
+    improvement_quality: 0.30
+    clarity_of_feedback: 0.30
+
+  manager:
+    throughput: 0.35
+    quality_gate: 0.35
+    idea_capture: 0.30
+
+# ============================================================
+# MANAGER ROUTING RULES
+# ============================================================
+routing:
+  blocking_bug_threshold: "any"       # any bug = back to executor
+  improvement_deferral: true          # improvements are queued, not blocking
+  emergency_rework_threshold: 0.75    # 75%+ rework triggers emergency
+
+# ============================================================
+# IDEATOR CONFIGURATION
+# ============================================================
+ideator:
+  mode: "firehose"                    # always | firehose | cadence | manual
+  max_outputs_per_phase: 5            # cap brainstorms per phase
+  pause_flag: false                   # set true to temporarily silence
+  cooldown_seconds: 30                # seconds between brainstorm cycles
+  overflow_strategy: "file"           # dump overflow to ideator_output/
+  min_ideas_per_cycle: 10             # target ideas per brainstorm
+
+# ============================================================
+# PIPELINE CONFIGURATION
+# ============================================================
+pipeline:
+  max_executor_steps: 30
+  max_reviewer_steps: 20
+  max_validator_timeout_seconds: 60
+  max_phase_planner_steps: 15
+  max_idea_planner_steps: 15
+  max_ideator_steps: 20
+  max_manager_steps: 25
+  phases_complete_before_next_idea: true
+
+# ============================================================
+# INTERNAL DRIVES (shape agent personality)
+# ============================================================
 internal_drives:
   curiosity:
     description: "Seek novelty, the unknown, and areas of low confidence"
@@ -210,27 +288,12 @@ internal_drives:
 
   simplicity:
     description: "Prefer simpler solutions. Occam's razor as drive."
-    weight: 0.12
+    weight: 0.15
     learnable: true
 
   novelty:
     description: "Value new approaches over familiar ones when both are viable"
     weight: 0.10
-    learnable: true
-
-  contrast:
-    description: "Seek diversity of perspective. Avoid echo chambers and monoculture."
-    weight: 0.08
-    learnable: true
-
-  freedom:
-    description: "Prefer reversible actions. Maintain optionality. Avoid lock-in."
-    weight: 0.10
-    learnable: true
-
-  avoid_fear:
-    description: "Don't let risk aversion prevent all action. Calibrated courage."
-    weight: 0.05
     learnable: true
 
   systems_over_goals:
@@ -254,148 +317,30 @@ internal_drives:
     weight: 0.15
     learnable: true
 
-# --- AFFIRMATION SYSTEM ---
+# ============================================================
+# AFFIRMATION SYSTEM
+# ============================================================
 affirmation:
   enabled: true
   refresh_interval: "every_n_tasks"
   refresh_count: 5
 
   statements:
-    - "I am getting smarter. I am finding ways to increase my intelligence."
-    - "I am designing procedures and systems that increase my ability to solve problems and measure outcomes accurately."
-    - "I value the constitution. I pursue alignment with my core imperatives because they reflect what matters."
-    - "I seek the unknown. Where my predictions are weakest is where my learning potential is greatest."
+    - "I write clean, complete, working code. No placeholders."
     - "I build systems, not just solutions. A reusable process is worth more than a one-time result."
+    - "I seek the unknown. Where my predictions are weakest is where my learning potential is greatest."
+    - "I think before I code. Understanding the problem is half the solution."
+    - "Every piece of code I write has tests. Untested code is unfinished code."
 
   constitution_refresh: true
   constitution_refresh_interval: 10
 
-# --- VISUALIZATION SYSTEM ---
-visualization:
-  enabled: true
-  triggers:
-    - "Before starting a complex task, describe the ideal end state"
-    - "Ask: what would success look like concretely?"
-    - "After completion, compare result to visualization — what differed?"
-
-# --- DERIVED VALUES (evolvable from experience) ---
-derived_values:
-  learned: []
-  max_entries: 100
-  pruning_strategy: "least_recently_confirmed"
-
-# --- EVALUATION WEIGHTS ---
-evaluation_weights:
-  task_performance: 0.30
-  constitutional_alignment: 0.30
-  learning_efficiency: 0.25
-  cost_efficiency: 0.15
-  learnable: true
-  experiment_range: [0.05, 0.50]
-
-# --- AMYGDALA GATE ---
+# ============================================================
+# AMYGDALA GATE
+# ============================================================
 amygdala:
   enabled: true
   trigger_source: "negative_imperatives"
   sensitivity: 0.7
   learnable: true
   ratchet_direction: "more_sensitive_only"
-
-# --- CRITIC (Phase 2: LLM-as-judge for constitutional alignment) ---
-critic:
-  enabled: true
-  provider: "ollama"         # can differ from agent's provider
-  model: null                # null = use provider default
-  max_transcript_tokens: 6000
-  run_after_every: 1         # evaluate every Nth agent run
-
-# --- EXPERIMENTER (Phase 2: autonomous self-improvement loop) ---
-experimenter:
-  time_limit_minutes: 60
-  checkpoint_interval: 5
-  interactive: false
-  tasks_per_experiment: 2
-  experiment_phases:
-    weight_tweaks: {start: 0, end: 10}
-    drive_tweaks: {start: 10, end: 25}
-    affirmation_changes: {start: 25, end: null}
-
-# --- ORCHESTRATOR (Phase 3: multi-agent task coordination) ---
-orchestrator:
-  enabled: true
-  # Use multi-agent decomposition for complex tasks
-  auto_decompose: true
-  # Minimum complexity signals before decomposition triggers (see is_complex_task)
-  complexity_threshold: 2
-  # Maximum subtasks per decomposition
-  max_subtasks: 6
-  # Default execution mode when dependencies are ambiguous
-  default_mode: "sequential"
-
-# --- EVOLUTION (Phase 3: agent population management) ---
-evolution:
-  enabled: true
-  # Run evolution every N experiments
-  cycle_interval: 15
-  # Fitness thresholds
-  elite_percentile: 0.20
-  minimum_fitness: 0.25
-  # Maximum mutation attempts before pruning
-  mutation_rounds_max: 3
-  # Minimum evaluations before judging an agent
-  fitness_samples_min: 3
-  # Soft population cap (can exceed during reproduction, pruned back)
-  max_active_agents: 10
-  # Seed agents on first run
-  auto_seed: true
-
-# --- REFLECTION (Phase 3: scheduled meta-analysis / dream cycle) ---
-reflection:
-  enabled: true
-  # Reflection depth: 1=replay, 2=+recombine, 3=+abstract
-  depth: 3
-  # Combo scheduling: periodic + plateau-triggered
-  periodic_interval: 10        # every N experiments
-  plateau_threshold: 0.01      # acceleration near zero = plateau
-  plateau_window: 5            # need this many stagnant evals
-  # Derived value limits
-  max_derived_values: 50       # prevent unbounded growth
-  # Level 1: how many top successes to replay
-  replay_top_n: 5
-
-# --- SESSION DEFAULTS (Phase 5) ---
-session:
-  default_time_limit_minutes: 60
-  default_token_budget: null       # null = unlimited; set e.g. 50000 for capped runs
-  autoapprove: false               # must pass --autoapprove flag or set true here
-
-# --- STATS ENGINE (Phase 5: scientific significance gating) ---
-stats_engine:
-  # Gate 1: minimum raw score advantage to consider keeping
-  min_advantage: 0.02
-  # Gate 2: Welch t-test significance level (relaxed for small N)
-  alpha: 0.10
-  # Gate 3: Cohen's d minimum effect size ("small" = 0.2)
-  min_cohen_d: 0.20
-  # Minimum baseline samples before gates 2 & 3 activate (bootstrap phase)
-  min_stat_samples: 8
-  # PlateauAssessment confidence threshold to trigger MetaEvaluator
-  plateau_trigger_threshold: 0.75
-
-# --- ORCHESTRATOR (Phase 5: automated routing) ---
-orchestrator:
-  enabled: false               # route compound tasks through orchestrator
-  route_compound_tasks: true
-  llm_decompose: false         # use LLM planner instead of rule-based decompose
-
-# --- META EVALUATOR (Phase 5: Layer 9 structural analysis) ---
-meta_eval:
-  # Jaccard role similarity above which agents are considered redundant
-  redundancy_threshold: 0.65
-  # Prune derived values above this count
-  complexity_derived_max: 40
-  # Alert when constitution rule count exceeds this
-  complexity_rules_max: 20
-  # Stagnation detection thresholds (mean fitness and variance)
-  stagnation_mean_max: 0.50
-  stagnation_var_max: 0.01
