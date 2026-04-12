@@ -105,14 +105,14 @@ def run_shell(command: str, cwd: str = ".") -> str:
             capture_output=True,
             text=True,
             cwd=cwd,
-            timeout=30,
+            timeout=120,
         )
         out = result.stdout + result.stderr
         if len(out) > 4000:
             out = out[:4000] + "\n...(truncated)"
         return out or "(no output)"
     except subprocess.TimeoutExpired:
-        return "ERROR: command timed out after 30s"
+        return "ERROR: command timed out after 120s"
     except Exception as e:
         return f"ERROR: {e}"
 

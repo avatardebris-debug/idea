@@ -56,8 +56,18 @@ class ReviewerAgent(AgentProcess):
         result = self.call_agent(task=task_prompt, verbose=False)
 
         # Read the review to extract severity counts
+        # Count only lines in the "Bugs (blocking)" section,
+        # not "non-blocking" mentions elsewhere
+        import re
         review_content = self.read_state_file(review_path)
-        blocking_count = review_content.lower().count("blocking")
+        bugs_section = re.search(
+            r'## Bugs.*?(?=## |$)', review_content, re.DOTALL | re.IGNORECASE
+        )
+        if bugs_section:
+            # Count list items in the bugs section
+            blocking_count = len(re.findall(r'^[-*]\s+', bugs_section.group(), re.MULTILINE))
+        else:
+            blocking_count = 0
 
         # Always send to Manager
         out_msg = Message.create(

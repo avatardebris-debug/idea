@@ -21,7 +21,7 @@ from datetime import datetime
 from llm_interface import get_llm, Message
 from tools import TOOLS, TOOL_SCHEMAS, read_file, list_tree
 from governance import GovernanceGate, AffirmationSystem, load_constitution
-from reflection import load_derived_values
+# reflection module archived — derived values section gracefully disabled
 
 # ---------------------------------------------------------------------------
 # Agent directory bootstrap
@@ -74,23 +74,13 @@ def build_system_prompt(affirmation: AffirmationSystem | None = None) -> str:
     except Exception:
         plan = "(none)"
 
-    # Build reflection insights section (Layer 3)
+    # Reflection insights section — disabled (reflection module archived)
     reflection_prompt = ""
-    try:
-        derived_values = load_derived_values()
-        # Take the most recent 10 high-confidence insights
-        high_conf = [v for v in derived_values if v.get("confidence", 0) >= 0.6][-10:]
-        if high_conf:
-            reflection_prompt = "\n## Learned Principles (from reflection)\n"
-            for v in high_conf:
-                reflection_prompt += f"- {v['value']}\n"
-    except Exception:
-        pass
 
     # Build constitution governance section
     constitution_prompt = ""
     try:
-        from experimenter import load_constitution
+        from governance import load_constitution
         const = load_constitution()
         rules = []
         # Pull negative imperatives as hard rules

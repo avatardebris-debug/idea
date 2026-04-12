@@ -55,9 +55,10 @@ class ValidatorAgent(AgentProcess):
 
         result = self.call_agent(task=task_prompt, verbose=False)
 
-        # Determine verdict from the report
+        # Determine verdict from the structured report ONLY
+        # (never trust free-form answer text — too many false positives)
         report_content = self.read_state_file(report_path)
-        is_pass = "Verdict: PASS" in report_content or "PASS" in result.answer.upper()
+        is_pass = bool(report_content) and "Verdict: PASS" in report_content
 
         if is_pass:
             # Send to Reviewer
@@ -76,19 +77,35 @@ class ValidatorAgent(AgentProcess):
             )
         else:
             # Send back to Executor with failure context
-            out_msg = Message.create(
-                from_agent=self.role,
-                to_agent="executor",
-                type="task",
-                payload={
-                    "phase": phase_num,
-                    "tasks_path": tasks_path,
-                    "workspace_path": workspace_path,
-                    "fix_required": True,
-                    "validation_report": report_content[:3000],
-                    "error_summary": "Validation FAILED — see report for details",
-                },
-            )
+            retry_count = msg.payload.get("retry_count", 0) + 1
+            if retry_count >= 3:
+                # Escalate to Manager — phase is stuck
+                out_msg = Message.create(
+                    from_agent=self.role,
+                    to_agent="manager",
+                    type="signal",
+                    payload={
+                        "signal": "PHASE_STUCK",
+                        "phase": phase_num,
+                        "reason": f"Validation failed after {retry_count} fix attempts",
+                        "validation_report": report_content[:2000],
+                    },
+                )
+            else:
+                out_msg = Message.create(
+                    from_agent=self.role,
+                    to_agent="executor",
+                    type="task",
+                    payload={
+                        "phase": phase_num,
+                        "tasks_path": tasks_path,
+                        "workspace_path": workspace_path,
+                        "fix_required": True,
+                        "retry_count": retry_count,
+                        "validation_report": report_content[:3000],
+                        "error_summary": f"Validation FAILED (attempt {retry_count}/3)",
+                    },
+                )
 
         return AgentOutput(
             success=is_pass,

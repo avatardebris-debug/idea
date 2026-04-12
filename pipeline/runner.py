@@ -113,6 +113,7 @@ class AgentSupervisor:
             # On Windows, use CREATE_NEW_PROCESS_GROUP for clean shutdown
             creationflags=subprocess.CREATE_NEW_PROCESS_GROUP if sys.platform == "win32" else 0,
         )
+        log_file.close()  # child inherited the handle; parent must close its copy
 
         self.processes[role] = proc
         return proc
@@ -353,11 +354,17 @@ def run_pipeline(
                 pending_total = sum(bus.queue_depth(r) for r in AGENT_ROLES)
                 elapsed_m = (time.time() - start_time) / 60
                 phase = idea_state.get("status", "?")
-                print(
+                status_line = (
                     f"  [{elapsed_m:.0f}m] agents={running_agents}/{len(AGENT_ROLES)} "
-                    f"pending={pending_total} phase={phase}    ",
-                    end="\r", flush=True,
+                    f"pending={pending_total} phase={phase}"
                 )
+                if sys.stdout.isatty():
+                    print(status_line + "    ", end="\r", flush=True)
+                else:
+                    # Non-interactive (redirected to log) — print every 4 checks
+                    if getattr(self, "_status_count", 0) % 4 == 0:
+                        print(status_line, flush=True)
+                    self._status_count = getattr(self, "_status_count", 0) + 1
 
                 if all_empty and not from_list:
                     # Single idea mode — might be done

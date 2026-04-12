@@ -91,6 +91,9 @@ class AgentProcess:
 
     def run_loop(self) -> None:
         """Main loop: poll queue → handle → send results. Runs until stopped."""
+        # Recover any messages stuck in 'processing' state from a previous crash
+        self._recover_processing_messages()
+
         logger.info("[%s] Starting agent loop (provider=%s, model=%s)",
                     self.role, self.provider, self.model)
 
@@ -266,6 +269,34 @@ class AgentProcess:
             signal.signal(signal.SIGTERM, _handler)
         except (OSError, ValueError):
             pass  # can't set signal handlers in non-main threads
+
+    def _recover_processing_messages(self) -> None:
+        """On startup, reset any 'processing' messages back to 'pending'.
+
+        If a subprocess crashed mid-handle(), those messages are stuck in
+        'processing' and invisible to read_next(). This makes them retryable.
+        """
+        import json as _json
+        path = self.bus._queue_path(self.role)
+        if not path.exists():
+            return
+        from pipeline.message_bus import _FileLock
+        with _FileLock(path):
+            lines = self.bus._read_lines(path)
+            changed = False
+            for i, line in enumerate(lines):
+                try:
+                    d = _json.loads(line)
+                    if d.get("status") == "processing":
+                        d["status"] = "pending"
+                        lines[i] = _json.dumps(d)
+                        changed = True
+                        logger.warning("[%s] Recovered stuck message %s",
+                                       self.role, d.get("msg_id", "?"))
+                except _json.JSONDecodeError:
+                    continue
+            if changed:
+                self.bus._write_lines(path, lines)
 
     def _setup_logging(self) -> None:
         """Configure per-agent log file."""

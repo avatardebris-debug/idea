@@ -123,17 +123,18 @@ class ManagerAgent(AgentProcess):
                 self._mark_idea_complete()
                 outgoing.extend(self._start_next_idea())
 
-        # Always trigger Ideator after review (firehose mode)
-        outgoing.append(Message.create(
-            from_agent=self.role,
-            to_agent="ideator",
-            type="task",
-            payload={
-                "phase": phase_num,
-                "review_path": review_path,
-                "trigger": "post_review",
-            },
-        ))
+        # Only trigger Ideator when phase passes (not during emergency rework)
+        if not is_emergency:
+            outgoing.append(Message.create(
+                from_agent=self.role,
+                to_agent="ideator",
+                type="task",
+                payload={
+                    "phase": phase_num,
+                    "review_path": review_path,
+                    "trigger": "post_review",
+                },
+            ))
 
         return outgoing
 
@@ -255,6 +256,18 @@ class ManagerAgent(AgentProcess):
         if sig == "PHASE_COMPLETE":
             phase = msg.payload.get("phase", 0)
             return self._advance_phase(phase) or []
+        elif sig == "PHASE_STUCK":
+            # Validation failed 3 times — log and skip phase, try next or stop
+            phase = msg.payload.get("phase", 0)
+            reason = msg.payload.get("reason", "unknown")
+            self._log_decision(msg, [], note=f"PHASE_STUCK phase={phase}: {reason}")
+            # Attempt to advance anyway (or stop if no more phases)
+            next_msgs = self._advance_phase(phase)
+            if next_msgs:
+                return next_msgs
+            else:
+                self._mark_idea_complete()
+                return self._start_next_idea()
         return []
 
     def _handle_generic(self, msg: Message) -> list[Message]:
