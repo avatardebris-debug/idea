@@ -186,8 +186,15 @@ class AgentSupervisor:
 # Seed the pipeline with the first idea
 # ---------------------------------------------------------------------------
 
+_seeded_this_session: set[str] = set()  # titles seeded in this runner invocation
+
+
 def seed_idea(bus: MessageBus, title: str, description: str) -> None:
     """Send the initial idea to the Idea Planner to kick off the pipeline."""
+    if title in _seeded_this_session:
+        return  # already seeded this run — don't duplicate
+    _seeded_this_session.add(title)
+
     msg = Message.create(
         from_agent="runner",
         to_agent="idea_planner",
@@ -214,6 +221,8 @@ def seed_from_master_list(bus: MessageBus) -> bool:
         match = re.match(r"- \[ \]\s+\*\*(.+?)\*\*\s*[—–-]\s*(.*)", line)
         if match:
             title = match.group(1).strip()
+            if title in _seeded_this_session:
+                continue  # already in progress this session — skip
             description = match.group(2).strip()
             seed_idea(bus, title, description)
             return True
@@ -236,6 +245,7 @@ def check_resume(bus: MessageBus) -> bool:
             return True
 
     return False
+
 
 
 # ---------------------------------------------------------------------------
@@ -322,7 +332,7 @@ def run_pipeline(
         print(f"\n  🚀 Pipeline running. Press Ctrl+C to stop.\n")
 
         start_time = time.time()
-        health_check_interval = 15  # seconds
+        health_check_interval = 60  # seconds — agents take minutes per call
         last_health_check = time.time()
 
         while not stop_requested:
