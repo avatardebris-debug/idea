@@ -46,9 +46,10 @@ Write your output to `.pipeline/state/master_plan.md`:
 ```
 
 ## Rules
-1. **Phase 1 must be small.** It should be completable in 10-20 minutes of LLM agent time. Get something working fast.
-2. **3-6 phases max** for a standard idea. Don't over-plan.
-3. **Each phase must be independently testable.** After Phase N completes, the system should work (not just compile).
-4. **Dependencies must be explicit.** If Phase 3 requires Phase 2, say so.
-5. **Be concrete.** "Build the frontend" is bad. "Create a Flask app with routes for /, /api/data, and /search" is good.
-6. **Say DONE** when the master plan is written.
+1. **Phase 1 = complete working MVP.** It must be fully functional and testable on its own — not scaffolding, not partial. If the idea is a CLI tool, Phase 1 ships the whole CLI tool.
+2. **2 phases max for simple tools** (CLI scripts, single-file utilities, data converters). Only use 3 phases for dashboards/web apps/multi-component systems.
+3. **Never more than 3 phases total.** If you feel you need more, you are over-engineering. Collapse them.
+4. **Each phase must be independently testable.** After Phase N completes, the system should work end-to-end (not just partially).
+5. **Dependencies must be explicit.** If Phase 2 requires Phase 1, say so.
+6. **Be concrete.** "Build the frontend" is bad. "Create a Flask app with routes for /, /api/data, and /search" is good.
+7. **Say DONE** when the master plan is written to `.pipeline/state/master_plan.md`.
