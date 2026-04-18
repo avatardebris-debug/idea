@@ -334,6 +334,7 @@ def run_pipeline(
         start_time = time.time()
         health_check_interval = 60  # seconds — agents take minutes per call
         last_health_check = time.time()
+        _status_count = 0  # for throttling non-interactive log output
 
         while not stop_requested:
             # Time limit check
@@ -372,9 +373,9 @@ def run_pipeline(
                     print(status_line + "    ", end="\r", flush=True)
                 else:
                     # Non-interactive (redirected to log) — print every 4 checks
-                    if getattr(self, "_status_count", 0) % 4 == 0:
+                    if _status_count % 4 == 0:
                         print(status_line, flush=True)
-                    self._status_count = getattr(self, "_status_count", 0) + 1
+                    _status_count += 1
 
                 if all_empty and not from_list:
                     # Single idea mode — might be done
