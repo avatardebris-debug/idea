@@ -39,10 +39,17 @@ Phase reviewed: {phase N}
 1. [idea A] + [idea B] → [what they could create together]
 2. ...
 
+## Development Opportunities (links between ideas not in the master list)
+1. [idea A] + [idea B] → [what idea is missing that could work with existing idea]
+2. ...
+
 ## Tool/Utility Ideas (reusable components to extract)
 1. [tool description] — usable by: [which future ideas]
 2. ...
 ```
+## Brainstorm
+1. [When in doubt construct a new branch of ideas]
+2. ...
 
 ## Rules
 1. **Volume over perfection.** Generate 10-20 ideas per cycle minimum. The Manager filters.
