@@ -23,6 +23,7 @@ class ExecutorAgent(AgentProcess):
 
     def handle(self, msg: Message) -> AgentOutput:
         phase_num = msg.payload.get("phase", 1)
+        idea_slug = msg.payload.get("idea_slug", self._current_slug)
         tasks_path = msg.payload.get("tasks_path", f"phases/phase_{phase_num}/tasks.md")
         fix_required = msg.payload.get("fix_required", False)
         fix_context = (msg.payload.get("validation_report", "")
@@ -33,6 +34,7 @@ class ExecutorAgent(AgentProcess):
         tasks_content = self.read_state_file(tasks_path)
         master_plan = self.read_state_file("state/master_plan.md")
         workspace = self.get_workspace_path()
+        tasks_full_path = self._project_path(tasks_path)
 
         # Snapshot workspace BEFORE so we only report newly created files
         before_files = (
@@ -52,13 +54,13 @@ class ExecutorAgent(AgentProcess):
                   "1. Read the failure report above carefully.\n"
                 f"2. Use `list_tree` then `read_file` on each relevant source file.\n"
                   "3. Fix ONLY the blocking issues described. Don't rewrite working code.\n"
-                f"4. Update tasks file at .pipeline/{tasks_path} if any task status changes.\n"
+                f"4. Update tasks file at `{tasks_full_path}` if any task status changes.\n"
                   "5. Say DONE and list every file you changed.\n"
             )
         elif not tasks_content:
             return AgentOutput(
                 success=False,
-                error=f"No tasks file found at .pipeline/{tasks_path}",
+                error=f"No tasks file found at {tasks_full_path}",
             )
         else:
             task_prompt = (
@@ -69,19 +71,18 @@ class ExecutorAgent(AgentProcess):
                 "1. Work through each unchecked task in order.\n"
                 f"2. Write all code files to: {workspace}\n"
                 "3. After completing each task, update the tasks file at "
-                f".pipeline/{tasks_path} marking it [x].\n"
+                f"`{tasks_full_path}` marking it [x].\n"
                 "4. When ALL tasks are complete, say DONE and list every file you created.\n"
             )
 
         result = self.call_agent(task=task_prompt, verbose=False)
 
-        # Only report files created/changed during THIS call (not prior phases)
+        # Only report files created/changed during THIS call
         after_files = (
             {p for p in workspace.rglob("*") if p.is_file()}
             if workspace.exists() else set()
         )
         new_files = after_files - before_files
-        # If no new files, fall back to reporting all (first phase case)
         files_to_report = new_files if new_files else after_files
         files_written = [
             str(p.relative_to(workspace))
@@ -99,6 +100,7 @@ class ExecutorAgent(AgentProcess):
                 "workspace_path": str(workspace),
                 "files_written": files_written,
                 "validation_report_path": f"phases/phase_{phase_num}/validation_report.md",
+                "idea_slug": idea_slug,
             },
         )
 

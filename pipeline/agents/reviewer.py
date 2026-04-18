@@ -23,7 +23,8 @@ class ReviewerAgent(AgentProcess):
 
     def handle(self, msg: Message) -> AgentOutput:
         phase_num = msg.payload.get("phase", 1)
-        workspace_path = msg.payload.get("workspace_path", ".pipeline/workspace")
+        idea_slug = msg.payload.get("idea_slug", self._current_slug)
+        workspace_path = msg.payload.get("workspace_path", str(self.get_workspace_path()))
         files_written = msg.payload.get("files_written", [])
         validation_path = msg.payload.get("validation_report_path",
                                           f"phases/phase_{phase_num}/validation_report.md")
@@ -31,6 +32,7 @@ class ReviewerAgent(AgentProcess):
                                       f"phases/phase_{phase_num}/review.md")
         tasks_path = msg.payload.get("tasks_path",
                                      f"phases/phase_{phase_num}/tasks.md")
+        review_full_path = self._project_path(review_path)
 
         # Read context
         tasks_content = self.read_state_file(tasks_path)
@@ -46,7 +48,7 @@ class ReviewerAgent(AgentProcess):
             f"## Your Job\n"
             f"1. Read EVERY code file in {workspace_path}.\n"
             f"2. Review each file line by line.\n"
-            f"3. Write your structured review to `.pipeline/{review_path}` using EXACTLY\n"
+            f"3. Write your structured review to `{review_full_path}` using EXACTLY\n"
             f"   these section headings (in this order):\n\n"
             f"   ### What's Good\n"
             f"   (bullet list of things working correctly)\n\n"
@@ -104,6 +106,7 @@ class ReviewerAgent(AgentProcess):
                 "blocking_bugs": blocking_count,
                 "non_blocking_notes": non_blocking_notes[:1500],
                 "review_content_preview": review_content[:1500],
+                "idea_slug": idea_slug,
             },
         )
 

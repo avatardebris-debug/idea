@@ -24,7 +24,9 @@ class PhasePlannerAgent(AgentProcess):
     def handle(self, msg: Message) -> AgentOutput:
         phase_num = msg.payload.get("phase", 1)
         phase_spec = msg.payload.get("phase_spec", "")
+        idea_slug = msg.payload.get("idea_slug", self._current_slug)
         tasks_path = f"phases/phase_{phase_num}/tasks.md"
+        tasks_full_path = self._project_path(tasks_path)
 
         # Read master plan for full context
         master_plan = self.read_state_file("state/master_plan.md")
@@ -41,7 +43,7 @@ class PhasePlannerAgent(AgentProcess):
             f"to see what's already built.\n"
             f"2. Break this phase into 3-8 concrete, ordered coding tasks.\n"
             f"3. Each task must have: what to build, which files, acceptance criteria.\n"
-            f"4. Write the task list to `.pipeline/{tasks_path}`.\n"
+            f"4. Write the task list to `{tasks_full_path}`.\n"
             f"5. Say DONE.\n"
         )
 
@@ -66,6 +68,7 @@ class PhasePlannerAgent(AgentProcess):
                 "phase": phase_num,
                 "tasks_path": tasks_path,
                 "workspace_path": str(workspace),
+                "idea_slug": idea_slug,
             },
         )
 

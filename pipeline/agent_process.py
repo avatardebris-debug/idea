@@ -33,6 +33,7 @@ from pipeline.message_bus import MessageBus, Message
 logger = logging.getLogger(__name__)
 
 PIPELINE_DIR = pathlib.Path(".pipeline")
+PROJECTS_DIR = PIPELINE_DIR / "projects"   # per-idea isolation root
 PROMPTS_DIR = pathlib.Path(__file__).parent / "prompts"
 LOGS_DIR = PIPELINE_DIR / "logs"
 
@@ -84,6 +85,7 @@ class AgentProcess:
         self.model = model
         self.bus = bus or MessageBus()
         self._stop_requested = False
+        self._current_slug = "unknown"   # set from message payload before each handle()
         self._setup_logging()
         self._setup_signal_handlers()
 
@@ -114,6 +116,10 @@ class AgentProcess:
                         self.role, msg.msg_id, msg.from_agent, msg.type)
 
             try:
+                # Bind the current idea slug so all path helpers use the right project dir
+                if msg.type != "signal":
+                    self._current_slug = msg.payload.get("idea_slug", self._current_slug)
+
                 output = self.handle(msg)
 
                 # Send outgoing messages
@@ -152,6 +158,21 @@ class AgentProcess:
         Override to add phase-specific state, file listings, etc.
         """
         return ""
+
+    # --- Per-idea project directory ---
+
+    @property
+    def _project_dir(self) -> pathlib.Path:
+        """Isolated directory for the current idea: .pipeline/projects/{slug}/"""
+        d = PROJECTS_DIR / self._current_slug
+        d.mkdir(parents=True, exist_ok=True)
+        return d
+
+    def _project_path(self, relative: str) -> str:
+        """Full path string for LLM prompts, e.g.:
+        '.pipeline/projects/csv_analyzer/state/master_plan.md'
+        """
+        return f".pipeline/projects/{self._current_slug}/{relative}"
 
     # --- Prompt construction ---
 
@@ -198,18 +219,18 @@ class AgentProcess:
             verbose=verbose,
         )
 
-    # --- Helper: read pipeline state files ---
+    # --- Helper: read/write per-idea project state files ---
 
     def read_state_file(self, relative_path: str) -> str:
-        """Read a file from .pipeline/ state directory."""
-        path = PIPELINE_DIR / relative_path
+        """Read a file from this idea's project directory."""
+        path = self._project_dir / relative_path
         if path.exists():
             return path.read_text(encoding="utf-8")
         return ""
 
     def write_state_file(self, relative_path: str, content: str) -> None:
-        """Write a file to .pipeline/ state directory."""
-        path = PIPELINE_DIR / relative_path
+        """Write a file to this idea's project directory."""
+        path = self._project_dir / relative_path
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(content, encoding="utf-8")
 
@@ -232,8 +253,8 @@ class AgentProcess:
         return self.read_json_state("state/current_phase.json")
 
     def get_workspace_path(self) -> pathlib.Path:
-        """Return the workspace path where code output goes."""
-        ws = PIPELINE_DIR / "workspace"
+        """Return the workspace path for generated code (per-idea)."""
+        ws = self._project_dir / "workspace"
         ws.mkdir(parents=True, exist_ok=True)
         return ws
 

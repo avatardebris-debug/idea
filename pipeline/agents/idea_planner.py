@@ -26,6 +26,9 @@ class IdeaPlannerAgent(AgentProcess):
     def handle(self, msg: Message) -> AgentOutput:
         idea_description = msg.payload.get("idea", "")
         idea_title = msg.payload.get("title", "Untitled Idea")
+        idea_slug = msg.payload.get("idea_slug", self._current_slug)
+
+        master_plan_path = self._project_path("state/master_plan.md")
 
         task_prompt = (
             f"You are the Idea Planner. Create a multi-phase implementation plan.\n\n"
@@ -33,7 +36,7 @@ class IdeaPlannerAgent(AgentProcess):
             f"## Instructions\n"
             f"1. Analyze the idea and identify the core deliverable.\n"
             f"2. Break it into 3-6 phases. Phase 1 must be the smallest useful thing.\n"
-            f"3. Write the master plan to `.pipeline/state/master_plan.md`.\n"
+            f"3. Write the master plan to `{master_plan_path}`.\n"
             f"4. Each phase needs: description, deliverable, dependencies, success criteria.\n"
             f"5. Include architecture notes and risks.\n"
             f"6. Say DONE.\n"
@@ -61,6 +64,8 @@ class IdeaPlannerAgent(AgentProcess):
             payload={
                 "phase": 1,
                 "phase_spec": phase_1_spec,
+                "idea_slug": idea_slug,
+                "idea_title": idea_title,
             },
         )
 

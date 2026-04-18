@@ -54,6 +54,7 @@ class ManagerAgent(AgentProcess):
 
     def _handle_review_result(self, msg: Message) -> list[Message]:
         phase_num = msg.payload.get("phase", 1)
+        idea_slug = msg.payload.get("idea_slug", self._current_slug)
         blocking_bugs = msg.payload.get("blocking_bugs", 0)
         review_content = msg.payload.get("review_content_preview", "")
         non_blocking_notes = msg.payload.get("non_blocking_notes", "")
@@ -61,6 +62,7 @@ class ManagerAgent(AgentProcess):
         workspace_path = msg.payload.get("workspace_path", "")
         files_written = msg.payload.get("files_written", [])
         review_path = msg.payload.get("review_path", "")
+        review_full_path = self._project_path(review_path) if review_path else review_path
 
         outgoing = []
 
@@ -82,6 +84,7 @@ class ManagerAgent(AgentProcess):
                     "phase": phase_num,
                     "reason": "Review indicates major architectural issues requiring rework",
                     "review_path": review_path,
+                    "idea_slug": idea_slug,
                 },
                 priority=0,
             ))
@@ -91,8 +94,9 @@ class ManagerAgent(AgentProcess):
                 type="task",
                 payload={
                     "phase": phase_num,
-                    "phase_spec": f"REWORK REQUIRED — see review at .pipeline/{review_path}",
+                    "phase_spec": f"REWORK REQUIRED — see review at {review_full_path}",
                     "is_rework": True,
+                    "idea_slug": idea_slug,
                 },
                 priority=0,
             ))
@@ -110,7 +114,8 @@ class ManagerAgent(AgentProcess):
                     "review_path": review_path,
                     "blocking_bugs": blocking_bugs,
                     "fix_instructions": f"Fix {blocking_bugs} blocking bugs from review. "
-                                       f"Read .pipeline/{review_path} for details.",
+                                       f"Read `{review_full_path}` for details.",
+                    "idea_slug": idea_slug,
                 },
             ))
         else:
@@ -119,7 +124,7 @@ class ManagerAgent(AgentProcess):
                 self._append_polish_items(phase_num, non_blocking_notes)
 
             # Phase passes — check if more phases remain
-            next_phase = self._advance_phase(phase_num)
+            next_phase = self._advance_phase(phase_num, idea_slug)
             if next_phase:
                 outgoing.extend(next_phase)
             else:
@@ -137,6 +142,7 @@ class ManagerAgent(AgentProcess):
                     "phase": phase_num,
                     "review_path": review_path,
                     "trigger": "post_review",
+                    "idea_slug": idea_slug,
                 },
             ))
 
@@ -180,7 +186,7 @@ class ManagerAgent(AgentProcess):
 
     # --- Phase progression ---
 
-    def _advance_phase(self, completed_phase: int) -> list[Message] | None:
+    def _advance_phase(self, completed_phase: int, idea_slug: str = "") -> list[Message] | None:
         """Check if more phases exist and advance to next."""
         master_plan = self.read_state_file("state/master_plan.md")
         if not master_plan:
@@ -203,6 +209,7 @@ class ManagerAgent(AgentProcess):
             "status": "queued",
         })
 
+        slug = idea_slug or self._current_slug
         return [Message.create(
             from_agent=self.role,
             to_agent="phase_planner",
@@ -210,6 +217,7 @@ class ManagerAgent(AgentProcess):
             payload={
                 "phase": next_phase_num,
                 "phase_spec": phase_spec,
+                "idea_slug": slug,
             },
         )]
 
@@ -217,19 +225,22 @@ class ManagerAgent(AgentProcess):
         """Pop the next unfinished idea from master_ideas.md.
         If master_ideas is empty, promote polish items from plan_amendments.md.
         """
+        import re as _re2
         mi_path = pathlib.Path("master_ideas.md")
         if mi_path.exists():
             content = mi_path.read_text(encoding="utf-8")
             for line in content.split("\n"):
-                match = re.match(r"- \[ \]\s+\*\*(.+?)\*\*\s*[—\u2013-]\s*(.*)", line)
+                match = _re2.match(r"- \[ \]\s+\*\*(.+?)\*\*\s*[—\u2013-]\s*(.*)", line)
                 if match:
                     title = match.group(1).strip()
                     description = match.group(2).strip()
+                    from pipeline.runner import _slugify
+                    slug = _slugify(title)
                     return [Message.create(
                         from_agent=self.role,
                         to_agent="idea_planner",
                         type="task",
-                        payload={"title": title, "idea": description},
+                        payload={"title": title, "idea": description, "idea_slug": slug},
                     )]
 
         # master_ideas.md is exhausted — promote polish items as a polish pass

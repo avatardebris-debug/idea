@@ -17,6 +17,7 @@ import argparse
 import json
 import os
 import pathlib
+import re
 import signal
 import subprocess
 import sys
@@ -51,8 +52,17 @@ AGENT_ROLES = [
 
 def init_pipeline_dirs() -> None:
     """Create all pipeline runtime directories."""
-    for subdir in ["queues", "state", "phases", "workspace", "ideator_output", "logs"]:
+    for subdir in ["queues", "state", "projects", "logs"]:
         (PIPELINE_DIR / subdir).mkdir(parents=True, exist_ok=True)
+
+
+def _slugify(title: str) -> str:
+    """Convert an idea title to a filesystem-safe slug.
+    'CSV Analyzer' -> 'csv_analyzer', '[Youtube studio]' -> 'youtube_studio'
+    """
+    slug = re.sub(r'[^\w\s-]', '', title.lower())
+    slug = re.sub(r'[\s_-]+', '_', slug)
+    return slug.strip('_') or "unknown"
 
 
 def save_pipeline_status(status: dict) -> None:
@@ -195,6 +205,8 @@ def seed_idea(bus: MessageBus, title: str, description: str) -> None:
         return  # already seeded this run — don't duplicate
     _seeded_this_session.add(title)
 
+    idea_slug = _slugify(title)
+
     msg = Message.create(
         from_agent="runner",
         to_agent="idea_planner",
@@ -202,10 +214,11 @@ def seed_idea(bus: MessageBus, title: str, description: str) -> None:
         payload={
             "title": title,
             "idea": description,
+            "idea_slug": idea_slug,
         },
     )
     bus.send(msg)
-    print(f"\n  📋 Seeded idea: {title}")
+    print(f"\n  📋 Seeded idea: {title} (slug: {idea_slug})")
 
 
 def seed_from_master_list(bus: MessageBus) -> bool:

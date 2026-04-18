@@ -23,13 +23,15 @@ class ValidatorAgent(AgentProcess):
 
     def handle(self, msg: Message) -> AgentOutput:
         phase_num = msg.payload.get("phase", 1)
-        workspace_path = msg.payload.get("workspace_path", ".pipeline/workspace")
+        idea_slug = msg.payload.get("idea_slug", self._current_slug)
+        workspace_path = msg.payload.get("workspace_path", str(self.get_workspace_path()))
         files_written = msg.payload.get("files_written", [])
         tasks_path = msg.payload.get("tasks_path", f"phases/phase_{phase_num}/tasks.md")
         report_path = msg.payload.get(
             "validation_report_path",
             f"phases/phase_{phase_num}/validation_report.md",
         )
+        report_full_path = self._project_path(report_path)
 
         # Read task list for acceptance criteria
         tasks_content = self.read_state_file(tasks_path)
@@ -48,7 +50,7 @@ class ValidatorAgent(AgentProcess):
             f"4. Run lint: `run_shell` with `cd {workspace_path} && python -m ruff check .` "
             f"(skip if ruff not installed).\n"
             f"5. Check each acceptance criterion from the task list.\n"
-            f"6. Write your validation report to `.pipeline/{report_path}`.\n"
+            f"6. Write your validation report to `{report_full_path}`.\n"
             f"7. End with a clear **Verdict: PASS** or **Verdict: FAIL**.\n"
             f"8. Say DONE.\n"
         )
@@ -56,12 +58,10 @@ class ValidatorAgent(AgentProcess):
         result = self.call_agent(task=task_prompt, verbose=False)
 
         # Determine verdict from the structured report ONLY
-        # (never trust free-form answer text — too many false positives)
         report_content = self.read_state_file(report_path)
         is_pass = bool(report_content) and "Verdict: PASS" in report_content
 
         if is_pass:
-            # Send to Reviewer
             out_msg = Message.create(
                 from_agent=self.role,
                 to_agent="reviewer",
@@ -73,13 +73,12 @@ class ValidatorAgent(AgentProcess):
                     "tasks_path": tasks_path,
                     "validation_report_path": report_path,
                     "review_path": f"phases/phase_{phase_num}/review.md",
+                    "idea_slug": idea_slug,
                 },
             )
         else:
-            # Send back to Executor with failure context
             retry_count = msg.payload.get("retry_count", 0) + 1
             if retry_count >= 3:
-                # Escalate to Manager — phase is stuck
                 out_msg = Message.create(
                     from_agent=self.role,
                     to_agent="manager",
@@ -89,6 +88,7 @@ class ValidatorAgent(AgentProcess):
                         "phase": phase_num,
                         "reason": f"Validation failed after {retry_count} fix attempts",
                         "validation_report": report_content[:2000],
+                        "idea_slug": idea_slug,
                     },
                 )
             else:
@@ -104,6 +104,7 @@ class ValidatorAgent(AgentProcess):
                         "retry_count": retry_count,
                         "validation_report": report_content[:3000],
                         "error_summary": f"Validation FAILED (attempt {retry_count}/3)",
+                        "idea_slug": idea_slug,
                     },
                 )
 
