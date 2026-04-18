@@ -7,18 +7,6 @@ Ideas are processed top-to-bottom. The pipeline picks the first unchecked `[ ]` 
 
 ## Ideas
 
-- [ ] **CSV Analyzer** — Build a Python CLI tool that reads a CSV file and prints summary statistics (row count, column names, min/max/mean for numeric columns, null counts). Include argparse, error handling for missing files and malformed CSVs, and unit tests with sample fixture files.
-
-- [ ] **File Deduplicator** — Build a Python script that scans a directory recursively, finds duplicate files by MD5 hash, and prints a report of duplicates grouped by hash. Optionally deletes duplicates with a --delete flag (with dry-run mode). Include unit tests.
-
-- [ ] **Markdown to HTML Converter** — Build a Python CLI that converts a markdown file to a standalone HTML file with basic CSS styling. Support headers, bold, italic, code blocks, and links. Include unit tests for each element type.
-
-- [ ] **URL Health Checker** — Build a Python CLI that reads a list of URLs from a text file, sends HEAD requests (with timeout), and outputs a report showing status code, response time, and whether each URL is up or down. Include concurrent checking with threading and unit tests with mock HTTP responses.
-
-- [ ] **JSON Diff Tool** — Build a Python CLI that compares two JSON files and prints a human-readable diff showing added, removed, and changed keys/values. Handle nested objects and arrays. Include unit tests covering edge cases.
-
-- [ ] **[summarizer tool]** — [from a dashboard use an llm to summarize uploaded pdfs, youtube links, websites, blogs. LLM C:\Users\avata\Downloads\Gemma-4-E2B-Uncensored-HauhauCS-Aggressive-Q2_K_P.gguf]
-
 - [ ] **[transcript extractor]** — [transcript extractor from video and audio + summary tool. use fast whisperer or faster whisperer github or something.]
 
 - [ ] **[Youtube studio]** — [multistep studio for building youtube videos. story generator or video commercial to video or movie format save cat format video format or useful youtube informational format. Title and thumbnail and keyword generator, transcript builder tool. template developer and implementor]
@@ -73,4 +61,14 @@ Ideas are processed top-to-bottom. The pipeline picks the first unchecked `[ ]` 
 - [ ] **[scott adams bot/llm fine tuning]** — [scott adams bot/llm fine tuning]
 
 
+- [ ] **CSV Analyzer** — Build a Python CLI tool that reads a CSV file and prints summary statistics (row count, column names, min/max/mean for numeric columns, null counts). Include argparse, error handling for missing files and malformed CSVs, and unit tests with sample fixture files.
 
+- [ ] **File Deduplicator** — Build a Python script that scans a directory recursively, finds duplicate files by MD5 hash, and prints a report of duplicates grouped by hash. Optionally deletes duplicates with a --delete flag (with dry-run mode). Include unit tests.
+
+- [ ] **Markdown to HTML Converter** — Build a Python CLI that converts a markdown file to a standalone HTML file with basic CSS styling. Support headers, bold, italic, code blocks, and links. Include unit tests for each element type.
+
+- [ ] **URL Health Checker** — Build a Python CLI that reads a list of URLs from a text file, sends HEAD requests (with timeout), and outputs a report showing status code, response time, and whether each URL is up or down. Include concurrent checking with threading and unit tests with mock HTTP responses.
+
+- [ ] **JSON Diff Tool** — Build a Python CLI that compares two JSON files and prints a human-readable diff showing added, removed, and changed keys/values. Handle nested objects and arrays. Include unit tests covering edge cases.
+
+- [ ] **[summarizer tool]** — [from a dashboard use an llm to summarize uploaded pdfs, youtube links, websites, blogs. user share links or download files and click summarize, or prompt agent what is needed from source material. Then agent uses tools/functions to access the sources, extracts, summaries, and presents.]
