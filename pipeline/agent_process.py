@@ -20,9 +20,10 @@ import os
 import pathlib
 import signal
 import sys
+import threading
 import time
 from dataclasses import dataclass, field
-from typing import Any
+from typing import Any, Optional
 
 # Ensure project root is on path
 PROJECT_ROOT = pathlib.Path(__file__).parent.parent
@@ -73,6 +74,7 @@ class AgentProcess:
 
     role: str = "base"
     max_steps: int = 20
+    phase_timeout: int = 2700   # 45 min wall-clock per handle() call — override per agent
     poll_interval: float = 2.0   # seconds between queue checks
 
     def __init__(
@@ -120,7 +122,46 @@ class AgentProcess:
                 if msg.type != "signal":
                     self._current_slug = msg.payload.get("idea_slug", self._current_slug)
 
-                output = self.handle(msg)
+                # Run handle() in a thread so we can enforce a wall-clock timeout
+                _result: list[Any] = [None]
+                _exc: list[Optional[Exception]] = [None]
+
+                def _run_handle() -> None:
+                    try:
+                        _result[0] = self.handle(msg)
+                    except Exception as e:
+                        _exc[0] = e
+
+                t = threading.Thread(target=_run_handle, daemon=True)
+                t.start()
+                t.join(timeout=self.phase_timeout)
+
+                if t.is_alive():
+                    # Agent timed out — escalate to manager
+                    timeout_min = self.phase_timeout // 60
+                    logger.warning(
+                        "[%s] Timed out after %d min on message %s",
+                        self.role, timeout_min, msg.msg_id
+                    )
+                    timeout_msg = Message.create(
+                        from_agent=self.role,
+                        to_agent="manager",
+                        type="signal",
+                        payload={
+                            "signal": "PHASE_STUCK",
+                            "reason": f"{self.role} timed out after {timeout_min} minutes",
+                            "phase": msg.payload.get("phase", "?"),
+                            "idea_slug": self._current_slug,
+                        },
+                    )
+                    self.bus.send(timeout_msg)
+                    self.bus.fail(msg)   # Don't retry a timed-out message
+                    continue
+
+                if _exc[0] is not None:
+                    raise _exc[0]
+
+                output = _result[0]
 
                 # Send outgoing messages
                 for out_msg in output.outgoing:

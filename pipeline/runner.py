@@ -65,6 +65,38 @@ def _slugify(title: str) -> str:
     return slug.strip('_') or "unknown"
 
 
+def _get_active_idea_state(pipeline_dir: pathlib.Path) -> dict:
+    """Return the current_idea.json from the most recently modified project.
+
+    Falls back to the old global .pipeline/state/current_idea.json for
+    backwards compatibility with runs that predate the per-project isolation.
+    """
+    projects_dir = pipeline_dir / "projects"
+    candidates: list[pathlib.Path] = []
+
+    if projects_dir.exists():
+        candidates = list(projects_dir.glob("*/state/current_idea.json"))
+
+    if candidates:
+        newest = max(candidates, key=lambda p: p.stat().st_mtime)
+        try:
+            state = json.loads(newest.read_text(encoding="utf-8"))
+            state.setdefault("_slug", newest.parent.parent.name)
+            return state
+        except Exception:
+            pass
+
+    # Fallback: old global location (pre-isolation runs)
+    old_path = pipeline_dir / "state" / "current_idea.json"
+    if old_path.exists():
+        try:
+            return json.loads(old_path.read_text(encoding="utf-8"))
+        except Exception:
+            pass
+
+    return {}
+
+
 def save_pipeline_status(status: dict) -> None:
     path = PIPELINE_DIR / "state" / "pipeline_status.json"
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -366,11 +398,8 @@ def run_pipeline(
 
                 # Check if all queues are empty AND all ideas done
                 all_empty = bus.all_queues_empty()
-                idea_state = {}
-                idea_state_path = PIPELINE_DIR / "state" / "current_idea.json"
-                if idea_state_path.exists():
-                    with open(idea_state_path, encoding="utf-8") as f:
-                        idea_state = json.load(f)
+                # Find the most recently updated project's current_idea.json
+                idea_state = _get_active_idea_state(PIPELINE_DIR)
 
                 running_agents = sum(1 for s in health.values() if s == "running")
 
@@ -378,9 +407,11 @@ def run_pipeline(
                 pending_total = sum(bus.queue_depth(r) for r in AGENT_ROLES)
                 elapsed_m = (time.time() - start_time) / 60
                 phase = idea_state.get("status", "?")
+                title = idea_state.get("title", "")
+                title_str = f" | {title[:28]}" if title else ""
                 status_line = (
                     f"  [{elapsed_m:.0f}m] agents={running_agents}/{len(AGENT_ROLES)} "
-                    f"pending={pending_total} phase={phase}"
+                    f"pending={pending_total} phase={phase}{title_str}"
                 )
                 if sys.stdout.isatty():
                     print(status_line + "    ", end="\r", flush=True)
