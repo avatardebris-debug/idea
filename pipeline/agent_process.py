@@ -271,10 +271,14 @@ class AgentProcess:
             pass  # can't set signal handlers in non-main threads
 
     def _recover_processing_messages(self) -> None:
-        """On startup, reset any 'processing' messages back to 'pending'.
+        """On startup, reset stuck 'processing' messages and discard stale SHUTDOWNs.
 
         If a subprocess crashed mid-handle(), those messages are stuck in
         'processing' and invisible to read_next(). This makes them retryable.
+
+        Also discards any SHUTDOWN signals left in the queue from a previous
+        pipeline run — these would otherwise cause agents to immediately exit
+        on every restart.
         """
         import json as _json
         path = self.bus._queue_path(self.role)
@@ -287,12 +291,22 @@ class AgentProcess:
             for i, line in enumerate(lines):
                 try:
                     d = _json.loads(line)
+                    # Reset stuck processing messages so they can be retried
                     if d.get("status") == "processing":
                         d["status"] = "pending"
                         lines[i] = _json.dumps(d)
                         changed = True
                         logger.warning("[%s] Recovered stuck message %s",
                                        self.role, d.get("msg_id", "?"))
+                    # Discard stale SHUTDOWN signals from previous runs
+                    elif (d.get("status") == "pending"
+                          and d.get("type") == "signal"
+                          and d.get("payload", {}).get("signal") == "SHUTDOWN"):
+                        d["status"] = "done"
+                        lines[i] = _json.dumps(d)
+                        changed = True
+                        logger.info("[%s] Discarded stale SHUTDOWN signal %s",
+                                    self.role, d.get("msg_id", "?"))
                 except _json.JSONDecodeError:
                     continue
             if changed:
