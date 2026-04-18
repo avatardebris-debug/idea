@@ -56,6 +56,7 @@ class ManagerAgent(AgentProcess):
         phase_num = msg.payload.get("phase", 1)
         blocking_bugs = msg.payload.get("blocking_bugs", 0)
         review_content = msg.payload.get("review_content_preview", "")
+        non_blocking_notes = msg.payload.get("non_blocking_notes", "")
         tasks_path = msg.payload.get("tasks_path", "")
         workspace_path = msg.payload.get("workspace_path", "")
         files_written = msg.payload.get("files_written", [])
@@ -82,9 +83,8 @@ class ManagerAgent(AgentProcess):
                     "reason": "Review indicates major architectural issues requiring rework",
                     "review_path": review_path,
                 },
-                priority=0,  # emergency priority
+                priority=0,
             ))
-            # Re-queue to phase planner with rework context
             outgoing.append(Message.create(
                 from_agent=self.role,
                 to_agent="phase_planner",
@@ -114,6 +114,10 @@ class ManagerAgent(AgentProcess):
                 },
             ))
         else:
+            # Clean pass — save any non-blocking notes as deferred polish tasks
+            if non_blocking_notes:
+                self._append_polish_items(phase_num, non_blocking_notes)
+
             # Phase passes — check if more phases remain
             next_phase = self._advance_phase(phase_num)
             if next_phase:
@@ -144,23 +148,29 @@ class ManagerAgent(AgentProcess):
         ideator_content = msg.payload.get("ideator_content_preview", "")
         ideator_path = msg.payload.get("ideator_output_path", "")
 
-        # Use LLM to triage the ideas
+        # Use LLM to triage the ideas into separate destinations
         task_prompt = (
-            f"You are the Manager triaging Ideator output.\n\n"
+            f"You are the Manager triaging Ideator output into separate files.\n\n"
             f"## Ideator Output\n{ideator_content[:3000]}\n\n"
             f"## Current Master Ideas List\n"
             f"{self._read_master_ideas()[:2000]}\n\n"
             f"## Your Job\n"
-            f"Categorize each idea:\n"
-            f"1. **ADD_TO_PLAN** — should be added to current project's future phases\n"
-            f"2. **ADD_TO_BACKLOG** — new idea for master_ideas.md\n"
-            f"3. **ARCHIVE** — interesting but not actionable now\n\n"
-            f"For each idea, write one line:\n"
-            f"CATEGORY | idea title | brief reason\n\n"
-            f"Then:\n"
-            f"- Append any ADD_TO_BACKLOG items to `master_ideas.md`\n"
-            f"- Log your decisions to `.pipeline/state/manager_decisions.md`\n"
-            f"- Say DONE.\n"
+            f"Categorize each idea into EXACTLY one of these 4 categories:\n"
+            f"1. **ADD_TO_PLAN** — extends or improves what is currently being built\n"
+            f"2. **REUSABLE_TOOL** — generic utility/library that could work across projects\n"
+            f"3. **ADD_TO_BACKLOG** — a distinct new project idea for the future\n"
+            f"4. **ARCHIVE** — interesting but not actionable right now\n\n"
+            f"Then write EACH category to its own file (append, don't overwrite):\n\n"
+            f"- **ADD_TO_PLAN** items → append to `.pipeline/state/plan_amendments.md`\n"
+            f"  Format each as: `- [ ] <title>: <what to add and why>`\n\n"
+            f"- **REUSABLE_TOOL** items → append to `.pipeline/state/reusable_tools.md`\n"
+            f"  Format each as: `- <tool name>: <what it does, which agents/files it lives near>`\n\n"
+            f"- **ADD_TO_BACKLOG** items → append to `master_ideas.md`\n"
+            f"  Format each as: `- [ ] **<title>** — <one line description>`\n\n"
+            f"- **ARCHIVE** items → append to `.pipeline/state/archived_ideas.md`\n"
+            f"  Format each as: `- <title>: <reason archived>`\n\n"
+            f"Write ALL four files even if a category is empty (just skip writing that one).\n"
+            f"Say DONE when finished.\n"
         )
 
         result = self.call_agent(task=task_prompt, verbose=False)
@@ -204,28 +214,89 @@ class ManagerAgent(AgentProcess):
         )]
 
     def _start_next_idea(self) -> list[Message]:
-        """Pop the next unfinished idea from master_ideas.md."""
+        """Pop the next unfinished idea from master_ideas.md.
+        If master_ideas is empty, promote polish items from plan_amendments.md.
+        """
         mi_path = pathlib.Path("master_ideas.md")
-        if not mi_path.exists():
+        if mi_path.exists():
+            content = mi_path.read_text(encoding="utf-8")
+            for line in content.split("\n"):
+                match = re.match(r"- \[ \]\s+\*\*(.+?)\*\*\s*[—\u2013-]\s*(.*)", line)
+                if match:
+                    title = match.group(1).strip()
+                    description = match.group(2).strip()
+                    return [Message.create(
+                        from_agent=self.role,
+                        to_agent="idea_planner",
+                        type="task",
+                        payload={"title": title, "idea": description},
+                    )]
+
+        # master_ideas.md is exhausted — promote polish items as a polish pass
+        polish = self._start_next_polish_item()
+        if polish:
+            return polish
+
+        return []  # Truly nothing left
+
+    def _append_polish_items(self, phase_num: int, non_blocking_notes: str) -> None:
+        """Save non-blocking review notes as deferred low-priority polish tasks."""
+        import re as _re
+        path = pathlib.Path(".pipeline/state/plan_amendments.md")
+        path.parent.mkdir(parents=True, exist_ok=True)
+        # Extract just the bullet lines from the notes block
+        bullets = _re.findall(r'^[-*]\s+(.+)$', non_blocking_notes, _re.MULTILINE)
+        if not bullets:
+            return
+        with open(path, "a", encoding="utf-8") as f:
+            f.write(f"\n### Phase {phase_num} Polish Items\n")
+            for b in bullets:
+                f.write(f"- [ ] (polish) {b}\n")
+
+    def _start_next_polish_item(self) -> list[Message]:
+        """When all ideas are done, bundle unchecked polish items into a new task."""
+        import re as _re
+        path = pathlib.Path(".pipeline/state/plan_amendments.md")
+        if not path.exists():
             return []
 
-        content = mi_path.read_text(encoding="utf-8")
-        # Find first line with [ ] (unchecked)
-        for line in content.split("\n"):
-            match = re.match(r"- \[ \]\s+\*\*(.+?)\*\*\s*[—–-]\s*(.*)", line)
-            if match:
-                title = match.group(1).strip()
-                description = match.group(2).strip()
-                return [Message.create(
-                    from_agent=self.role,
-                    to_agent="idea_planner",
-                    type="task",
-                    payload={
-                        "title": title,
-                        "idea": description,
-                    },
-                )]
-        return []  # No more ideas
+        content = path.read_text(encoding="utf-8")
+        unchecked = _re.findall(r'^- \[ \] (.*)', content, _re.MULTILINE)
+        if not unchecked:
+            return []  # All polish done too
+
+        # Bundle up to 5 polish items into one synthetic idea
+        batch = unchecked[:5]
+        batch_desc = "\n".join(f"- {item}" for item in batch)
+
+        # Mark them as in-progress in the file so they aren't picked up again
+        updated = content
+        for item in batch:
+            updated = updated.replace(f"- [ ] {item}", f"- [/] {item}", 1)
+        path.write_text(updated, encoding="utf-8")
+
+        self._log_decision(
+            msg=Message.create(
+                from_agent=self.role, to_agent=self.role,
+                type="internal", payload={},
+            ),
+            outgoing=[],
+            note=f"Promoting {len(batch)} polish items as synthetic idea",
+        )
+
+        return [Message.create(
+            from_agent=self.role,
+            to_agent="idea_planner",
+            type="task",
+            payload={
+                "title": "Polish Pass",
+                "idea": (
+                    "Apply the following low-priority improvements identified during code review.\n"
+                    "These are non-blocking quality improvements, not bug fixes:\n\n"
+                    + batch_desc
+                ),
+            },
+        )]
 
     def _mark_idea_complete(self) -> None:
         """Mark the current idea as done in master_ideas.md."""

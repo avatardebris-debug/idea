@@ -92,22 +92,9 @@ fi
 source "${AGENT_DIR}/.venv/bin/activate"
 
 pip install -q --upgrade pip
-pip install -q ollama
-
-echo "  Downloading HumanEval dataset..."
-python3 -c "
-import urllib.request, pathlib
-dest = pathlib.Path('benchmarks/datasets/HumanEval.jsonl.gz')
-dest.parent.mkdir(parents=True, exist_ok=True)
-if not dest.exists():
-    urllib.request.urlretrieve(
-        'https://github.com/openai/human-eval/raw/master/data/HumanEval.jsonl.gz',
-        str(dest)
-    )
-    print('  Downloaded HumanEval.jsonl.gz')
-else:
-    print('  HumanEval dataset already present')
-"
+# No external dependencies needed — the pipeline uses only Python stdlib
+# Optionally install openai/anthropic if you want those providers:
+# pip install -q openai anthropic
 
 echo "  ✓ Python environment ready"
 
@@ -134,21 +121,26 @@ echo "  Model:    ${MODEL}"
 echo "  Provider: ollama"
 echo "  Base URL: http://localhost:11434"
 echo ""
-echo "  To start an experiment session:"
+echo "  Quick smoke test (single idea):"
 echo ""
 echo "    source .venv/bin/activate"
-echo "    export PYTHONUTF8=1"
-echo "    python experimenter.py \\"
+echo "    cd /path/to/idea-impl"
+echo "    python pipeline/runner.py \"Build a Python word counter CLI\""
+echo ""
+echo "  Run from idea backlog (overnight):"
+echo ""
+echo "    python pipeline/runner.py \\"
+echo "        --from-list \\"
 echo "        --provider ollama \\"
 echo "        --model ${MODEL} \\"
-echo "        --time-limit 480 \\"
-echo "        --autoapprove"
+echo "        --time-limit 480"
 echo ""
-echo "  To resume from a previous run:"
+echo "  Multi-day run (no time limit):"
 echo ""
-echo "    # 1. Upload your state bundle:"
-echo "    python state_bundle.py import state_YYYYMMDD_HHMMSS.tar.gz"
-echo ""
-echo "    # 2. Run (it auto-resumes from checkpoint):"
-echo "    python experimenter.py --provider ollama --model ${MODEL} --time-limit 480"
+echo "    nohup python pipeline/runner.py \\"
+echo "        --from-list \\"
+echo "        --provider ollama \\"
+echo "        --model ${MODEL} \\"
+echo "        > pipeline_run.log 2>&1 &"
+echo "    echo \"Pipeline running. tail -f pipeline_run.log to monitor.\""
 echo ""

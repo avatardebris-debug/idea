@@ -46,28 +46,49 @@ class ReviewerAgent(AgentProcess):
             f"## Your Job\n"
             f"1. Read EVERY code file in {workspace_path}.\n"
             f"2. Review each file line by line.\n"
-            f"3. Write your structured review to `.pipeline/{review_path}`.\n"
-            f"4. Be specific — reference file:line for every issue.\n"
-            f"5. Include a 'What\\'s Good' section — don't only criticize.\n"
-            f"6. End with severity summary and overall assessment.\n"
-            f"7. Say DONE.\n"
+            f"3. Write your structured review to `.pipeline/{review_path}` using EXACTLY\n"
+            f"   these section headings (in this order):\n\n"
+            f"   ### What's Good\n"
+            f"   (bullet list of things working correctly)\n\n"
+            f"   ## Blocking Bugs\n"
+            f"   (ONLY issues that will cause crashes, wrong output, or test failures)\n"
+            f"   (reference file:line for each — if none write 'None')\n\n"
+            f"   ## Non-Blocking Notes\n"
+            f"   (style, naming, future improvements — do NOT list these as bugs)\n\n"
+            f"   ## Verdict\n"
+            f"   PASS or FAIL with one-line reason\n\n"
+            f"4. A phase PASSES if '## Blocking Bugs' contains only 'None' or zero bullets.\n"
+            f"5. Say DONE.\n"
         )
 
         result = self.call_agent(task=task_prompt, verbose=False)
 
-        # Read the review to extract severity counts
-        # Count only lines in the "Bugs (blocking)" section,
-        # not "non-blocking" mentions elsewhere
         import re
         review_content = self.read_state_file(review_path)
+
+        # Count only bullets under '## Blocking Bugs' — non-blocking notes are deferred work
         bugs_section = re.search(
-            r'## Bugs.*?(?=## |$)', review_content, re.DOTALL | re.IGNORECASE
+            r'## Blocking Bugs.*?(?=## |$)', review_content, re.DOTALL | re.IGNORECASE
         )
         if bugs_section:
-            # Count list items in the bugs section
-            blocking_count = len(re.findall(r'^[-*]\s+', bugs_section.group(), re.MULTILINE))
+            section_text = bugs_section.group()
+            if re.search(r'\bnone\b', section_text, re.IGNORECASE):
+                blocking_count = 0
+            else:
+                blocking_count = len(re.findall(r'^[-*]\s+', section_text, re.MULTILINE))
         else:
             blocking_count = 0
+
+        # Extract non-blocking notes to pass through for deferred scheduling
+        non_blocking_section = re.search(
+            r'## Non-Blocking Notes.*?(?=## |$)', review_content, re.DOTALL | re.IGNORECASE
+        )
+        non_blocking_notes = ""
+        if non_blocking_section:
+            raw = non_blocking_section.group().strip()
+            # Only capture if there are actual bullet items (not just the heading)
+            if re.search(r'^[-*]\s+', raw, re.MULTILINE):
+                non_blocking_notes = raw
 
         # Always send to Manager
         out_msg = Message.create(
@@ -81,6 +102,7 @@ class ReviewerAgent(AgentProcess):
                 "workspace_path": workspace_path,
                 "files_written": files_written,
                 "blocking_bugs": blocking_count,
+                "non_blocking_notes": non_blocking_notes[:1500],
                 "review_content_preview": review_content[:1500],
             },
         )
