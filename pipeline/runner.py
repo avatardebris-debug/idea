@@ -429,10 +429,14 @@ def run_pipeline(
                         print(f"\n  ✓ All queues empty — pipeline complete.")
                         break
                 elif all_empty and from_list:
-                    # Try to start next idea
-                    if not seed_from_master_list(bus):
-                        print(f"\n  ✓ All ideas processed — pipeline complete.")
-                        break
+                    # Only seed the next idea when the pipeline is truly idle —
+                    # i.e. no pending AND no in-flight (processing) messages.
+                    # all_queues_empty() only counts 'pending'; has_active_work()
+                    # counts both, preventing premature seeding.
+                    if not bus.has_active_work():
+                        if not seed_from_master_list(bus):
+                            print(f"\n  ✓ All ideas processed — pipeline complete.")
+                            break
 
                 last_health_check = time.time()
 

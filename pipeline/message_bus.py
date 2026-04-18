@@ -198,7 +198,11 @@ class MessageBus:
         return len(self.peek(agent_name))
 
     def all_queues_empty(self, exclude: list[str] | None = None) -> bool:
-        """Check if all agent queues are empty (no pending messages)."""
+        """Check if all agent queues have no PENDING messages.
+
+        NOTE: does NOT count messages currently being processed (status='processing').
+        Use has_active_work() to include in-flight messages.
+        """
         exclude = set(exclude or [])
         for path in self.base_dir.glob("*.jsonl"):
             agent = path.stem
@@ -207,6 +211,26 @@ class MessageBus:
             if self.queue_depth(agent) > 0:
                 return False
         return True
+
+    def has_active_work(self) -> bool:
+        """Return True if any queue has pending OR processing messages.
+
+        Use this to decide whether to seed a new idea — if anything is
+        still in-flight, don't start another idea yet.
+        """
+        for path in self.base_dir.glob("*.jsonl"):
+            try:
+                with _FileLock(path):
+                    for line in self._read_lines(path):
+                        try:
+                            d = json.loads(line)
+                            if d.get("status") in ("pending", "processing"):
+                                return True
+                        except json.JSONDecodeError:
+                            continue
+            except Exception:
+                continue
+        return False
 
     def send_signal(
         self,
