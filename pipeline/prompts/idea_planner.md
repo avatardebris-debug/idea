@@ -52,4 +52,4 @@ Write your output to `.pipeline/state/master_plan.md`:
 4. **Each phase must be independently testable.** After Phase N completes, the system should work end-to-end (not just partially).
 5. **Dependencies must be explicit.** If Phase 2 requires Phase 1, say so.
 6. **Be concrete.** "Build the frontend" is bad. "Create a Flask app with routes for /, /api/data, and /search" is good.
-7. **Say DONE** when the master plan is written to `.pipeline/state/master_plan.md`.
+7. **Say DONE** when the master plan is written to the path specified in the task prompt.

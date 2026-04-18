@@ -88,6 +88,9 @@ class AgentProcess:
         self.bus = bus or MessageBus()
         self._stop_requested = False
         self._current_slug = "unknown"   # set from message payload before each handle()
+        # Capture the absolute working directory at startup so ALL path resolution
+        # is anchored here, even if the LLM's file tools use a different cwd.
+        self._run_dir = pathlib.Path.cwd().resolve()
         self._setup_logging()
         self._setup_signal_handlers()
 
@@ -204,16 +207,32 @@ class AgentProcess:
 
     @property
     def _project_dir(self) -> pathlib.Path:
-        """Isolated directory for the current idea: .pipeline/projects/{slug}/"""
-        d = PROJECTS_DIR / self._current_slug
+        """Absolute path to this idea's isolated project directory.
+
+        Uses the cwd captured at agent startup so all paths are anchored
+        to the correct location regardless of LLM tool resolution.
+        """
+        d = self._run_dir / ".pipeline" / "projects" / self._current_slug
         d.mkdir(parents=True, exist_ok=True)
         return d
 
     def _project_path(self, relative: str) -> str:
-        """Full path string for LLM prompts, e.g.:
-        '.pipeline/projects/csv_analyzer/state/master_plan.md'
+        """Return the ABSOLUTE path string for use in LLM prompts.
+
+        Absolute paths prevent the LLM from mis-resolving relative paths
+        against a different working directory.
+        Example: '/workspace/idea impl/.pipeline/projects/csv_analyzer/state/master_plan.md'
         """
-        return f".pipeline/projects/{self._current_slug}/{relative}"
+        return str(self._project_dir / relative)
+
+    def _update_idea_status(self, status: str) -> None:
+        """Write a quick status update to current_idea.json for the runner's display."""
+        try:
+            existing = self.read_json_state("state/current_idea.json")
+            existing["status"] = status
+            self.write_json_state("state/current_idea.json", existing)
+        except Exception:
+            pass  # Non-critical — don't break the pipeline over a status update
 
     # --- Prompt construction ---
 

@@ -36,6 +36,8 @@ class ExecutorAgent(AgentProcess):
         workspace = self.get_workspace_path()
         tasks_full_path = self._project_path(tasks_path)
 
+        self._update_idea_status(f"phase_{phase_num}_executing")
+
         # Snapshot workspace BEFORE so we only report newly created files
         before_files = (
             {p for p in workspace.rglob("*") if p.is_file()}

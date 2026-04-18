@@ -34,6 +34,8 @@ class ReviewerAgent(AgentProcess):
                                      f"phases/phase_{phase_num}/tasks.md")
         review_full_path = self._project_path(review_path)
 
+        self._update_idea_status(f"phase_{phase_num}_reviewing")
+
         # Read context
         tasks_content = self.read_state_file(tasks_path)
         validation_content = self.read_state_file(validation_path)

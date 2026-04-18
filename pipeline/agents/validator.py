@@ -255,6 +255,8 @@ class ValidatorAgent(AgentProcess):
         )
         report_full_path = self._project_path(report_path)
 
+        self._update_idea_status(f"phase_{phase_num}_validating")
+
         # ------------------------------------------------------------------
         # PRE-VALIDATION: deterministic dependency installation
         # This runs BEFORE the LLM so tests can't fail from missing modules.
