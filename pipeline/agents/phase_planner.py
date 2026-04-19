@@ -20,8 +20,8 @@ from pipeline.message_bus import Message
 class PhasePlannerAgent(AgentProcess):
     role = "phase_planner"
     max_steps = 15
-    temperature = 0.3   # structured task breakdown — mostly deterministic
-    think = False       # follows a fixed decomposition pattern — CoT wastes tokens
+    temperature = 0.4   # slight creativity helps with edge-case task decomposition
+    think = True        # reasoning here pays dividends for every downstream agent
 
     def handle(self, msg: Message) -> AgentOutput:
         phase_num = msg.payload.get("phase", 1)
