@@ -19,7 +19,11 @@ from dataclasses import dataclass, field, asdict
 from datetime import datetime, timezone
 from typing import Any
 
-PIPELINE_DIR = pathlib.Path(".pipeline")
+# Always resolve .pipeline/ relative to the project root (this file's grandparent dir),
+# NOT relative to wherever the runner is invoked from. This prevents duplicate
+# .pipeline/ directories when the user starts the runner from different directories.
+_PROJECT_ROOT = pathlib.Path(__file__).parent.parent.resolve()
+PIPELINE_DIR = _PROJECT_ROOT / ".pipeline"
 QUEUES_DIR = PIPELINE_DIR / "queues"
 
 

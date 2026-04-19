@@ -31,7 +31,10 @@ sys.path.insert(0, str(PROJECT_ROOT))
 
 from pipeline.message_bus import MessageBus, Message
 
-PIPELINE_DIR = pathlib.Path(".pipeline")
+# Anchor PIPELINE_DIR to where this script lives (project root), not cwd.
+# This prevents /workspace/.pipeline vs /.pipeline splits when the user
+# starts the runner from different directories.
+PIPELINE_DIR = PROJECT_ROOT.resolve() / ".pipeline"
 AGENTS_DIR = pathlib.Path(__file__).parent / "agents"
 
 # All agent roles and their module paths
@@ -254,8 +257,12 @@ def seed_idea(bus: MessageBus, title: str, description: str) -> None:
 
 
 def seed_from_master_list(bus: MessageBus) -> bool:
-    """Find the first unchecked idea in master_ideas.md and seed it."""
-    mi_path = pathlib.Path("master_ideas.md")
+    """Find the first unchecked idea in master_ideas.md and seed it.
+
+    Skips ideas that already have project state (in-progress or completed)
+    so partial projects can resume naturally from restored queues.
+    """
+    mi_path = PROJECT_ROOT.resolve() / "master_ideas.md"
     if not mi_path.exists():
         print("  ✗ master_ideas.md not found")
         return False
@@ -268,6 +275,28 @@ def seed_from_master_list(bus: MessageBus) -> bool:
             title = match.group(1).strip()
             if title in _seeded_this_session:
                 continue  # already in progress this session — skip
+
+            slug = _slugify(title)
+            project_state = PIPELINE_DIR / "projects" / slug / "state" / "current_idea.json"
+
+            if project_state.exists():
+                # Project already has work done — skip seeding, let queues resume it.
+                # If queues are empty and it's stuck, the user can delete the state
+                # to force a re-seed: rm .pipeline/projects/<slug>/state/current_idea.json
+                try:
+                    state = json.loads(project_state.read_text(encoding="utf-8"))
+                    status = state.get("status", "?")
+                    if status != "complete":
+                        print(f"  ⏭  Skipping '{title}' — already in progress ({status}), resuming from queue")
+                        _seeded_this_session.add(title)  # don't try again this session
+                        continue
+                    else:
+                        # Completed — skip entirely
+                        _seeded_this_session.add(title)
+                        continue
+                except Exception:
+                    pass  # Can't read state — seed it fresh
+
             description = match.group(2).strip()
             seed_idea(bus, title, description)
             return True

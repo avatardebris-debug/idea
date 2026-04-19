@@ -33,7 +33,10 @@ from pipeline.message_bus import MessageBus, Message
 
 logger = logging.getLogger(__name__)
 
-PIPELINE_DIR = pathlib.Path(".pipeline")
+# Always anchor .pipeline/ to the project root (this file's grandparent),
+# not the cwd — prevents /workspace/.pipeline vs /.pipeline splits.
+_PROJECT_ROOT = pathlib.Path(__file__).parent.parent.resolve()
+PIPELINE_DIR = _PROJECT_ROOT / ".pipeline"
 PROJECTS_DIR = PIPELINE_DIR / "projects"   # per-idea isolation root
 PROMPTS_DIR = pathlib.Path(__file__).parent / "prompts"
 LOGS_DIR = PIPELINE_DIR / "logs"
@@ -88,9 +91,9 @@ class AgentProcess:
         self.bus = bus or MessageBus()
         self._stop_requested = False
         self._current_slug = "unknown"   # set from message payload before each handle()
-        # Capture the absolute working directory at startup so ALL path resolution
-        # is anchored here, even if the LLM's file tools use a different cwd.
-        self._run_dir = pathlib.Path.cwd().resolve()
+        # Anchor to project root so all path resolution is consistent,
+        # regardless of which directory the runner was invoked from.
+        self._run_dir = _PROJECT_ROOT
         self._setup_logging()
         self._setup_signal_handlers()
 
