@@ -111,30 +111,38 @@ def print_summary(projects_dir: pathlib.Path) -> list[dict]:
     return summaries
 
 
+def _normalize_queue_line(line: str) -> str:
+    """Reset 'processing' status to 'pending' so restored queues are immediately ready."""
+    try:
+        d = json.loads(line)
+        if d.get("status") == "processing":
+            d["status"] = "pending"
+            return json.dumps(d)
+    except Exception:
+        pass
+    return line
+
+
 def build_zip(
     pipeline_dir: pathlib.Path,
     out_dir: pathlib.Path,
     workspace_only: bool,
-) -> pathlib.Path:
+) -> tuple[pathlib.Path, int]:
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     zip_name = f"pipeline_extract_{timestamp}.zip"
     zip_path = out_dir / zip_name
 
     projects_dir = pipeline_dir / "projects"
     included = 0
-    skipped = 0
 
     with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_DEFLATED, allowZip64=True) as zf:
+
+        # --- Project files ---
         for project_dir in sorted(projects_dir.iterdir()):
             if not project_dir.is_dir():
                 continue
 
-            if workspace_only:
-                # Only include workspace/ (generated code)
-                roots = [project_dir / "workspace"]
-            else:
-                # Include everything: workspace, phases, state
-                roots = [project_dir]
+            roots = [project_dir / "workspace"] if workspace_only else [project_dir]
 
             for root in roots:
                 if not root.exists():
@@ -143,19 +151,36 @@ def build_zip(
                     if not file.is_file():
                         continue
                     if file.name.startswith(".") and file.suffix not in (".md", ".json"):
-                        skipped += 1
                         continue
-                    # Archive path relative to pipeline_dir's parent
                     arcname = file.relative_to(pipeline_dir.parent)
                     zf.write(file, arcname)
                     included += 1
 
-        # Also include master_ideas.md if present
+        # --- Queues (normalize processing→pending for clean resume) ---
+        if not workspace_only:
+            queues_dir = pipeline_dir / "queues"
+            if queues_dir.exists():
+                for qfile in queues_dir.glob("*.jsonl"):
+                    lines = qfile.read_text(encoding="utf-8", errors="ignore").splitlines()
+                    normalized = "\n".join(_normalize_queue_line(l) for l in lines if l.strip())
+                    arcname = str(qfile.relative_to(pipeline_dir.parent))
+                    zf.writestr(arcname, normalized + "\n" if normalized else "")
+                    included += 1
+
+            # --- Global state ---
+            state_dir = pipeline_dir / "state"
+            if state_dir.exists():
+                for sf in state_dir.glob("*.json"):
+                    arcname = sf.relative_to(pipeline_dir.parent)
+                    zf.write(sf, arcname)
+                    included += 1
+
+        # --- master_ideas.md ---
         mi = pipeline_dir.parent / "master_ideas.md"
         if mi.exists():
             zf.write(mi, mi.name)
 
-        # Write an extraction manifest
+        # --- Manifest ---
         summaries = [
             get_project_summary(p)
             for p in sorted(projects_dir.iterdir())
@@ -165,11 +190,18 @@ def build_zip(
             "extracted_at": datetime.now().isoformat(),
             "workspace_only": workspace_only,
             "files_included": included,
+            "resume_instructions": (
+                "1. git pull on new instance\n"
+                "2. unzip this file into /workspace/idea\\ impl/\n"
+                "3. python pipeline/runner.py --from-list --provider ollama --model qwen3.5:35b\n"
+                "   Runner will auto-detect in-progress projects and re-queue them."
+            ),
             "projects": summaries,
         }
         zf.writestr("MANIFEST.json", json.dumps(manifest, indent=2))
 
     return zip_path, included
+
 
 
 def main() -> None:

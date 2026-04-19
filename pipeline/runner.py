@@ -320,11 +320,106 @@ def check_resume(bus: MessageBus) -> bool:
 
     return False
 
+def _rebuild_queues_from_state(bus: MessageBus) -> int:
+    """Re-inject queue messages for in-progress projects that have no queued work.
+
+    This enables resume from a zip: if .pipeline/projects/ was restored but
+    .pipeline/queues/ was not (or was empty), this reconstructs the correct
+    messages so agents can pick up where they left off.
+
+    Returns the number of projects re-queued.
+    """
+    if bus.has_active_work():
+        return 0  # Queues are already populated — nothing to rebuild
+
+    projects_dir = PIPELINE_DIR / "projects"
+    if not projects_dir.exists():
+        return 0
+
+    injected = 0
+    for project_dir in sorted(projects_dir.iterdir()):
+        if not project_dir.is_dir():
+            continue
+
+        state_file = project_dir / "state" / "current_idea.json"
+        if not state_file.exists():
+            continue
+
+        try:
+            state = json.loads(state_file.read_text(encoding="utf-8"))
+        except Exception:
+            continue
+
+        status = state.get("status", "")
+        title  = state.get("title", project_dir.name)
+        slug   = project_dir.name
+
+        if status in ("", "complete"):
+            continue
+
+        # Detect which phase and step we were on
+        phase_match = re.match(r"phase_(\d+)_(\w+)", status)
+        if phase_match:
+            phase_num  = int(phase_match.group(1))
+            phase_step = phase_match.group(2)
+        elif status == "planning":
+            # Was in initial idea planning — restart from idea_planner
+            msg = Message.create(
+                from_agent="runner",
+                to_agent="idea_planner",
+                type="task",
+                payload={
+                    "title": title,
+                    "idea": state.get("description", title),
+                    "idea_slug": slug,
+                },
+            )
+            bus.send(msg)
+            injected += 1
+            print(f"  🔁 Re-queued '{title}' → idea_planner (was: planning)")
+            continue
+        else:
+            continue  # Unknown status — skip
+
+        tasks_path     = f"phases/phase_{phase_num}/tasks.md"
+        workspace_path = str(project_dir / "workspace")
+        report_path    = f"phases/phase_{phase_num}/validation_report.md"
+        review_path    = f"phases/phase_{phase_num}/review.md"
+
+        # Route to the correct agent based on phase step
+        if phase_step == "planning":
+            # phase_planner was building the task list
+            master_plan_file = project_dir / "state" / "master_plan.md"
+            phase_spec = master_plan_file.read_text(encoding="utf-8")[:500] \
+                if master_plan_file.exists() else f"Resume phase {phase_num} of {title}"
+            agent    = "phase_planner"
+            payload  = {"phase": phase_num, "phase_spec": phase_spec, "idea_slug": slug}
+        elif phase_step == "executing":
+            agent   = "executor"
+            payload = {"phase": phase_num, "tasks_path": tasks_path,
+                       "workspace_path": workspace_path, "idea_slug": slug}
+        elif phase_step == "validating":
+            agent   = "validator"
+            payload = {"phase": phase_num, "tasks_path": tasks_path,
+                       "workspace_path": workspace_path,
+                       "validation_report_path": report_path, "idea_slug": slug}
+        elif phase_step == "reviewing":
+            agent   = "reviewer"
+            payload = {"phase": phase_num, "tasks_path": tasks_path,
+                       "workspace_path": workspace_path,
+                       "validation_report_path": report_path,
+                       "review_path": review_path, "idea_slug": slug}
+        else:
+            continue  # Unknown step
+
+        bus.send(Message.create(from_agent="runner", to_agent=agent,
+                                type="task", payload=payload))
+        injected += 1
+        print(f"  🔁 Re-queued '{title}' → {agent} (was: {status})")
+
+    return injected
 
 
-# ---------------------------------------------------------------------------
-# Main loop
-# ---------------------------------------------------------------------------
 
 def run_pipeline(
     idea: str | None = None,
@@ -355,14 +450,26 @@ def run_pipeline(
     if resume:
         has_work = check_resume(bus)
         if not has_work:
-            print("  No active pipeline to resume.")
+            # Queues empty but project state may exist — try rebuilding from state
+            rebuilt = _rebuild_queues_from_state(bus)
+            if rebuilt:
+                print(f"  🔄 Rebuilt queues for {rebuilt} project(s) from saved state")
+                has_work = True
+            else:
+                print("  No active pipeline to resume.")
 
     if not has_work and idea:
         seed_idea(bus, idea.split(".")[0][:50], idea)
         has_work = True
 
     if not has_work and from_list:
-        has_work = seed_from_master_list(bus)
+        # First try to rebuild any in-progress projects from saved state
+        rebuilt = _rebuild_queues_from_state(bus)
+        if rebuilt:
+            print(f"  🔄 Rebuilt queues for {rebuilt} project(s) from saved state")
+            has_work = True
+        else:
+            has_work = seed_from_master_list(bus)
 
     if not has_work:
         print("\n  ✗ Nothing to do. Provide an idea, use --from-list, or --resume.")
