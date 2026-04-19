@@ -20,6 +20,8 @@ from pipeline.message_bus import Message
 class ExecutorAgent(AgentProcess):
     role = "executor"
     max_steps = 30
+    temperature = 0.2    # deterministic code writing
+    think = False        # no chain-of-thought: just execute the task list
 
     @property
     def _shared_libs_dir(self) -> pathlib.Path:

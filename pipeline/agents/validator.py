@@ -242,6 +242,8 @@ def auto_install_workspace_deps(workspace: pathlib.Path) -> list[str]:
 class ValidatorAgent(AgentProcess):
     role = "validator"
     max_steps = 20
+    temperature = 0.2   # deterministic test running
+    think = False       # mechanical validation — no CoT needed
 
     def handle(self, msg: Message) -> AgentOutput:
         phase_num = msg.payload.get("phase", 1)

@@ -24,6 +24,8 @@ from pipeline.message_bus import Message
 class ManagerAgent(AgentProcess):
     role = "manager"
     max_steps = 25
+    temperature = 0.3   # coordination decisions should be consistent
+    think = False       # routing logic is deterministic — CoT not needed
 
     # Emergency override threshold — if review mentions this many rework items
     REWORK_THRESHOLD = 0.75

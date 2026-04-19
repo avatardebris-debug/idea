@@ -186,11 +186,13 @@ def run_agent(
     model: str | None = None,
     max_steps: int = 20,
     temperature: float = 0.7,
+    think: bool | None = None,
+    num_ctx: int = 16384,
     system_prompt_addon: str = "",
     verbose: bool = True,
 ) -> AgentResult:
     bootstrap_agent_dir()
-    llm = get_llm(provider, model, temperature=temperature)
+    llm = get_llm(provider, model, temperature=temperature, think=think, num_ctx=num_ctx)
 
     # --- Initialize governance ---
     constitution = load_constitution()

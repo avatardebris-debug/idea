@@ -22,6 +22,8 @@ from pipeline.message_bus import Message
 class IdeaPlannerAgent(AgentProcess):
     role = "idea_planner"
     max_steps = 15
+    temperature = 0.5   # needs to reason about architecture — moderate creativity
+    think = True        # reasoning helps produce better multi-phase project structures
 
     def handle(self, msg: Message) -> AgentOutput:
         idea_description = msg.payload.get("idea", "")

@@ -20,6 +20,8 @@ from pipeline.message_bus import Message
 class ReviewerAgent(AgentProcess):
     role = "reviewer"
     max_steps = 20
+    temperature = 0.3   # structured assessment — slightly creative but mostly deterministic
+    think = False       # follows fixed review template — no CoT needed
 
     def handle(self, msg: Message) -> AgentOutput:
         phase_num = msg.payload.get("phase", 1)

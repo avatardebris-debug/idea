@@ -252,10 +252,14 @@ class OllamaAdapter(LLMBase):
         model: str = "qwen3.5:35b",
         temperature: float = 0.2,
         base_url: str | None = None,
+        num_ctx: int = 16384,
+        think: bool | None = None,
     ):
         self.model = model
         self.temperature = temperature
         self.base_url = (base_url or "http://localhost:11434").rstrip("/")
+        self.num_ctx = num_ctx
+        self.think = think   # None=model default, False=no CoT, True=force CoT
 
     def _normalize_messages(self, messages: list[dict]) -> list[dict]:
         """
@@ -292,11 +296,18 @@ class OllamaAdapter(LLMBase):
         import urllib.request
         import urllib.error
 
+        options: dict[str, Any] = {
+            "temperature": self.temperature,
+            "num_ctx": self.num_ctx,
+        }
+        if self.think is not None:
+            options["think"] = self.think
+
         payload: dict[str, Any] = {
             "model": self.model,
             "messages": self._normalize_messages(messages),
             "stream": False,
-            "options": {"temperature": self.temperature},
+            "options": options,
         }
         if tools:
             payload["tools"] = [
@@ -376,6 +387,8 @@ def get_llm(
     model: str | None = None,
     temperature: float = 0.7,
     base_url: str | None = None,
+    num_ctx: int = 16384,
+    think: bool | None = None,
 ) -> LLMBase:
     """
     Return a model-agnostic LLM adapter.
@@ -385,12 +398,8 @@ def get_llm(
         model:       Optional model override (uses provider default if None)
         temperature: Sampling temperature (0.0–1.0, default 0.7)
         base_url:    Optional base URL for remote instances (Ollama only)
-
-    Examples:
-        llm = get_llm("openai")
-        llm = get_llm("claude", model="claude-sonnet-4-5")
-        llm = get_llm("ollama", model="qwen3.5:35b")
-        llm = get_llm("ollama", model="qwen3.5:35b", base_url="http://remote:11434")
+        num_ctx:     Ollama context window size (default 16384 — prevents truncation)
+        think:       Qwen3 thinking mode — None=default, False=off, True=on (Ollama only)
     """
     if provider not in PROVIDERS:
         raise ValueError(f"Unknown provider '{provider}'. Choose from: {list(PROVIDERS)}")
@@ -398,7 +407,11 @@ def get_llm(
     kwargs: dict[str, Any] = {"temperature": temperature}
     if model:
         kwargs["model"] = model
-    if base_url and provider == "ollama":
-        kwargs["base_url"] = base_url
+    if provider == "ollama":
+        if base_url:
+            kwargs["base_url"] = base_url
+        kwargs["num_ctx"] = num_ctx
+        if think is not None:
+            kwargs["think"] = think
     return cls(**kwargs)
 

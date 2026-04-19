@@ -80,6 +80,12 @@ class AgentProcess:
     phase_timeout: int = 2700   # 45 min wall-clock per handle() call — override per agent
     poll_interval: float = 2.0   # seconds between queue checks
 
+    # Per-role LLM tuning — subclasses override to match cognitive load of the task.
+    temperature: float = 0.4     # moderate determinism by default
+    num_ctx: int = 16384         # 16k context prevents code truncation (Ollama default is ~4k)
+    think: bool | None = None    # None=model default; False=disable Qwen3 chain-of-thought
+
+
     def __init__(
         self,
         provider: str = "ollama",
@@ -271,13 +277,16 @@ class AgentProcess:
         max_steps: int | None = None,
         verbose: bool = False,
     ) -> "AgentResult":
-        """Run the core ReAct loop from agent.py."""
+        """Run the core ReAct loop from agent.py with per-role LLM settings."""
         from agent import run_agent
         return run_agent(
             task=task,
             provider=self.provider,
             model=self.model,
             max_steps=max_steps or self.max_steps,
+            temperature=self.temperature,
+            think=self.think,
+            num_ctx=self.num_ctx,
             system_prompt_addon=system_prompt_addon,
             verbose=verbose,
         )
