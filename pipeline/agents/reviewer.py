@@ -40,6 +40,9 @@ class ReviewerAgent(AgentProcess):
         tasks_content = self.read_state_file(tasks_path)
         validation_content = self.read_state_file(validation_path)
 
+        shared_libs_path = str(self._run_dir / ".pipeline" / "shared_libs")
+        reusable_tools_path = str(self._run_dir / ".pipeline" / "state" / "reusable_tools.md")
+
         task_prompt = (
             f"You are reviewing Phase {phase_num} code.\n\n"
             f"## Task Spec\n{tasks_content}\n\n"
@@ -59,10 +62,19 @@ class ReviewerAgent(AgentProcess):
             f"   (reference file:line for each — if none write 'None')\n\n"
             f"   ## Non-Blocking Notes\n"
             f"   (style, naming, future improvements — do NOT list these as bugs)\n\n"
+            f"   ## Reusable Components\n"
+            f"   (list any self-contained utilities, helpers, or classes that could be\n"
+            f"   reused by other projects — e.g. HTTP client wrapper, PDF parser, auth helper)\n\n"
             f"   ## Verdict\n"
             f"   PASS or FAIL with one-line reason\n\n"
             f"4. A phase PASSES if '## Blocking Bugs' contains only 'None' or zero bullets.\n"
-            f"5. Say DONE.\n"
+            f"5. If the verdict is PASS and '## Reusable Components' lists anything:\n"
+            f"   a. For each reusable component, copy the relevant file(s) to a subfolder:\n"
+            f"      `{shared_libs_path}/<component_name>/`\n"
+            f"   b. Append a one-line entry to `{reusable_tools_path}`:\n"
+            f"      `- <component_name>: <what it does> (source: {workspace_path})`\n"
+            f"   Only copy self-contained, general-purpose code — not project-specific logic.\n"
+            f"6. Say DONE.\n"
         )
 
         result = self.call_agent(task=task_prompt, verbose=False)

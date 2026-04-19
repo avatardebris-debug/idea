@@ -21,6 +21,39 @@ class ExecutorAgent(AgentProcess):
     role = "executor"
     max_steps = 30
 
+    @property
+    def _shared_libs_dir(self) -> pathlib.Path:
+        """Global shared library pool, accessible to all projects."""
+        d = self._run_dir / ".pipeline" / "shared_libs"
+        d.mkdir(parents=True, exist_ok=True)
+        return d
+
+    def build_context(self, msg) -> str:  # type: ignore[override]
+        """Inject shared library index into every executor task automatically."""
+        parts: list[str] = []
+
+        # 1. Reusable tools index (written by manager from ideator output + reviewer)
+        tools_file = self._run_dir / ".pipeline" / "state" / "reusable_tools.md"
+        if tools_file.exists():
+            content = tools_file.read_text(encoding="utf-8").strip()
+            if content:
+                parts.append(f"## Reusable Tools Index\n{content}")
+
+        # 2. Shared libs directory listing
+        shared = self._shared_libs_dir
+        libs = sorted(shared.iterdir()) if shared.exists() else []
+        lib_dirs = [d for d in libs if d.is_dir()]
+        if lib_dirs:
+            listing = "\n".join(f"  - {d.name}/  ({len(list(d.rglob('*.py')))} .py files)"
+                                 for d in lib_dirs)
+            parts.append(
+                f"## Shared Libraries Available\n"
+                f"Path: {shared}\n{listing}\n"
+                f"Read any of these files before reimplementing similar functionality."
+            )
+
+        return "\n\n".join(parts)
+
     def handle(self, msg: Message) -> AgentOutput:
         phase_num = msg.payload.get("phase", 1)
         idea_slug = msg.payload.get("idea_slug", self._current_slug)
@@ -65,16 +98,19 @@ class ExecutorAgent(AgentProcess):
                 error=f"No tasks file found at {tasks_full_path}",
             )
         else:
+            shared_libs_path = str(self._shared_libs_dir)
             task_prompt = (
                 f"You are implementing Phase {phase_num} of a project.\n\n"
                 f"## Master Plan\n{master_plan[:2000]}\n\n"
                 f"## Your Tasks\n{tasks_content}\n\n"
                 "## Instructions\n"
-                "0. FIRST: identify every third-party Python package this phase needs.\n"
-                "   Run `pip install <pkg1> <pkg2> ...` via run_shell BEFORE writing any code.\n"
-                "   Common mappings: bs4→beautifulsoup4, PIL→Pillow, cv2→opencv-python,\n"
-                "   yaml→pyyaml, dotenv→python-dotenv, sklearn→scikit-learn.\n"
-                "   If unsure, install it — better safe than a test failure.\n"
+                f"0a. CHECK SHARED LIBS FIRST: run `list_tree` on `{shared_libs_path}`.\n"
+                "    If any existing library is relevant, read and reuse it — don't reimplement.\n"
+                "    The 'Reusable Tools Index' and 'Shared Libraries' sections above list what exists.\n"
+                "0b. INSTALL DEPENDENCIES: identify every third-party Python package needed.\n"
+                "    Run `pip install <pkg1> <pkg2> ...` via run_shell BEFORE writing any code.\n"
+                "    Common mappings: bs4→beautifulsoup4, PIL→Pillow, cv2→opencv-python,\n"
+                "    yaml→pyyaml, dotenv→python-dotenv, sklearn→scikit-learn.\n"
                 "1. Work through each unchecked task in order.\n"
                 f"2. Write all code files to: {workspace}\n"
                 "3. After completing each task, update the tasks file at "
