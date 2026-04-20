@@ -544,10 +544,16 @@ def run_pipeline(
                 elapsed_m = (time.time() - start_time) / 60
                 phase = idea_state.get("status", "?")
                 title = idea_state.get("title", "")
-                title_str = f" | {title[:28]}" if title else ""
+                title_str = f" | [{title[:28]}]" if title else ""
+
+                # Task progress (written by executor/validator)
+                tasks_done  = idea_state.get("tasks_done")
+                tasks_total = idea_state.get("tasks_total")
+                task_str = f" {tasks_done}/{tasks_total}✓" if tasks_total else ""
+
                 status_line = (
                     f"  [{elapsed_m:.0f}m] agents={running_agents}/{len(AGENT_ROLES)} "
-                    f"pending={pending_total} phase={phase}{title_str}"
+                    f"pending={pending_total} phase={phase}{task_str}{title_str}"
                 )
                 if sys.stdout.isatty():
                     print(status_line + "    ", end="\r", flush=True)
@@ -556,6 +562,7 @@ def run_pipeline(
                     if _status_count % 4 == 0:
                         print(status_line, flush=True)
                     _status_count += 1
+
 
                 if all_empty and not from_list:
                     # Single idea mode — might be done

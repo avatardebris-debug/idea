@@ -234,11 +234,26 @@ class AgentProcess:
         """
         return str(self._project_dir / relative)
 
-    def _update_idea_status(self, status: str) -> None:
-        """Write a quick status update to current_idea.json for the runner's display."""
+    def _update_idea_status(self, status: str, phase_num: int | None = None) -> None:
+        """Write a quick status update to current_idea.json for the runner's display.
+
+        Also reads task checkbox counts from the phase tasks.md so the status
+        line can show '3/8 tasks' alongside the phase name.
+        """
         try:
             existing = self.read_json_state("state/current_idea.json")
             existing["status"] = status
+
+            # Optionally count task progress
+            if phase_num is not None:
+                import re as _re
+                tasks_content = self.read_state_file(f"phases/phase_{phase_num}/tasks.md")
+                if tasks_content:
+                    total = len(_re.findall(r'^- \[[ x]\]', tasks_content, _re.MULTILINE))
+                    done  = len(_re.findall(r'^- \[x\]', tasks_content, _re.MULTILINE | _re.IGNORECASE))
+                    existing["tasks_done"] = done
+                    existing["tasks_total"] = total
+
             self.write_json_state("state/current_idea.json", existing)
         except Exception:
             pass  # Non-critical — don't break the pipeline over a status update

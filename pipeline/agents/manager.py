@@ -29,6 +29,8 @@ class ManagerAgent(AgentProcess):
 
     # Emergency override threshold — if review mentions this many rework items
     REWORK_THRESHOLD = 0.75
+    # Max times executor is asked to fix the SAME phase before force-advancing
+    MAX_PHASE_RETRIES = 4
 
     def handle(self, msg: Message) -> AgentOutput:
         source = msg.payload.get("source", msg.from_agent)
@@ -103,27 +105,59 @@ class ManagerAgent(AgentProcess):
                 priority=0,
             ))
         elif blocking_bugs > 0:
-            # Send back to executor with fix instructions
-            outgoing.append(Message.create(
-                from_agent=self.role,
-                to_agent="executor",
-                type="task",
-                payload={
-                    "phase": phase_num,
-                    "tasks_path": tasks_path,
-                    "workspace_path": workspace_path,
-                    "fix_required": True,
-                    "review_path": review_path,
-                    "blocking_bugs": blocking_bugs,
-                    "fix_instructions": f"Fix {blocking_bugs} blocking bugs from review. "
-                                       f"Read `{review_full_path}` for details.",
-                    "idea_slug": idea_slug,
-                },
-            ))
+            # Increment retry counter; force-advance if cap is reached
+            retries = self._increment_phase_retries(phase_num)
+            if retries >= self.MAX_PHASE_RETRIES:
+                # Too many retries — force-advance and log a warning
+                warn_msg = (
+                    f"\n\n---\n⚠️  MANAGER OVERRIDE: Phase {phase_num} force-advanced after "
+                    f"{retries} failed fix attempts.\n"
+                    f"Remaining blocking bugs ({blocking_bugs}) are deferred as non-blocking.\n"
+                )
+                if review_full_path and str(review_full_path) != review_path:
+                    try:
+                        with open(review_full_path, "a", encoding="utf-8") as f:
+                            f.write(warn_msg)
+                    except Exception:
+                        pass
+                logger.warning(
+                    "[manager] Phase %d force-advanced after %d retries (%d bugs remain)",
+                    phase_num, retries, blocking_bugs,
+                )
+                self._reset_phase_retries(phase_num)
+                next_phase = self._advance_phase(phase_num, idea_slug)
+                if next_phase:
+                    outgoing.extend(next_phase)
+                else:
+                    self._mark_idea_complete()
+                    outgoing.extend(self._start_next_idea())
+            else:
+                # Send back to executor with fix instructions
+                outgoing.append(Message.create(
+                    from_agent=self.role,
+                    to_agent="executor",
+                    type="task",
+                    payload={
+                        "phase": phase_num,
+                        "tasks_path": tasks_path,
+                        "workspace_path": workspace_path,
+                        "fix_required": True,
+                        "review_path": review_path,
+                        "blocking_bugs": blocking_bugs,
+                        "fix_instructions": (
+                            f"Fix {blocking_bugs} blocking bugs from review (attempt {retries}/{self.MAX_PHASE_RETRIES}). "
+                            f"Read `{review_full_path}` for details."
+                        ),
+                        "idea_slug": idea_slug,
+                    },
+                ))
         else:
             # Clean pass — save any non-blocking notes as deferred polish tasks
             if non_blocking_notes:
                 self._append_polish_items(phase_num, non_blocking_notes)
+
+            # Reset retry counter for this phase
+            self._reset_phase_retries(phase_num)
 
             # Phase passes — check if more phases remain
             next_phase = self._advance_phase(phase_num, idea_slug)
@@ -265,6 +299,49 @@ class ManagerAgent(AgentProcess):
             f.write(f"\n### Phase {phase_num} Polish Items\n")
             for b in bullets:
                 f.write(f"- [ ] (polish) {b}\n")
+
+    # --- Phase retry tracking ---
+
+    def _retry_state_path(self) -> pathlib.Path:
+        return self._project_dir / "state" / "phase_retries.json"
+
+    def _get_phase_retries(self, phase_num: int) -> int:
+        try:
+            data = self.read_json_state("state/phase_retries.json")
+            return data.get(f"phase_{phase_num}", 0)
+        except Exception:
+            return 0
+
+    def _increment_phase_retries(self, phase_num: int) -> int:
+        try:
+            data = self.read_json_state("state/phase_retries.json")
+        except Exception:
+            data = {}
+        key = f"phase_{phase_num}"
+        data[key] = data.get(key, 0) + 1
+        self.write_json_state("state/phase_retries.json", data)
+        logger.info("[manager] Phase %d retry count: %d", phase_num, data[key])
+        return data[key]
+
+    def _reset_phase_retries(self, phase_num: int) -> None:
+        try:
+            data = self.read_json_state("state/phase_retries.json")
+            data.pop(f"phase_{phase_num}", None)
+            self.write_json_state("state/phase_retries.json", data)
+        except Exception:
+            pass
+
+    def _count_tasks(self, phase_num: int) -> tuple[int, int]:
+        """Return (done, total) task counts from the phase tasks.md checkbox list."""
+        import re as _re
+        content = self.read_state_file(f"phases/phase_{phase_num}/tasks.md")
+        if not content:
+            return 0, 0
+        total = len(_re.findall(r'^- \[[ x]\]', content, _re.MULTILINE))
+        done  = len(_re.findall(r'^- \[x\]',    content, _re.MULTILINE | _re.IGNORECASE))
+        return done, total
+
+
 
     def _start_next_polish_item(self) -> list[Message]:
         """When all ideas are done, bundle unchecked polish items into a new task."""

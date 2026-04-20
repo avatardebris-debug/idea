@@ -257,7 +257,7 @@ class ValidatorAgent(AgentProcess):
         )
         report_full_path = self._project_path(report_path)
 
-        self._update_idea_status(f"phase_{phase_num}_validating")
+        self._update_idea_status(f"phase_{phase_num}_validating", phase_num=phase_num)
 
         # ------------------------------------------------------------------
         # PRE-VALIDATION: deterministic dependency installation
