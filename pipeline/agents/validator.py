@@ -301,6 +301,13 @@ class ValidatorAgent(AgentProcess):
         is_pass = bool(report_content) and "Verdict: PASS" in report_content
 
         if is_pass:
+            # Clear validator retry counter for this phase on success
+            try:
+                retry_data = self.read_json_state("state/phase_retries.json")
+                retry_data.pop(f"validator_phase_{phase_num}", None)
+                self.write_json_state("state/phase_retries.json", retry_data)
+            except Exception:
+                pass
             out_msg = Message.create(
                 from_agent=self.role,
                 to_agent="reviewer",
@@ -316,8 +323,23 @@ class ValidatorAgent(AgentProcess):
                 },
             )
         else:
-            retry_count = msg.payload.get("retry_count", 0) + 1
+            # Persistent retry counter — message payload won't work because
+            # executor creates a fresh message each time, resetting the count.
+            retry_key = f"validator_phase_{phase_num}"
+            try:
+                retry_data = self.read_json_state("state/phase_retries.json")
+            except Exception:
+                retry_data = {}
+            retry_count = retry_data.get(retry_key, 0) + 1
+            retry_data[retry_key] = retry_count
+            self.write_json_state("state/phase_retries.json", retry_data)
+
+            logger.info("[validator] Phase %d validation failure #%d", phase_num, retry_count)
+
             if retry_count >= 3:
+                # Clear counter and escalate to manager
+                retry_data.pop(retry_key, None)
+                self.write_json_state("state/phase_retries.json", retry_data)
                 out_msg = Message.create(
                     from_agent=self.role,
                     to_agent="manager",
@@ -340,9 +362,8 @@ class ValidatorAgent(AgentProcess):
                         "tasks_path": tasks_path,
                         "workspace_path": workspace_path,
                         "fix_required": True,
-                        "retry_count": retry_count,
                         "validation_report": report_content[:3000],
-                        "error_summary": f"Validation FAILED (attempt {retry_count}/3)",
+                        "error_summary": f"Validation FAILED (attempt {retry_count}/3). Fix all failing tests.",
                         "idea_slug": idea_slug,
                     },
                 )
