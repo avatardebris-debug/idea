@@ -29,8 +29,8 @@ class ManagerAgent(AgentProcess):
 
     # Emergency override threshold — if review mentions this many rework items
     REWORK_THRESHOLD = 0.75
-    # Max times executor is asked to fix the SAME phase before force-advancing
-    MAX_PHASE_RETRIES = 4
+    # Max reviewer-loop retries (validator loop is self-managed via progress tracking)
+    MAX_PHASE_RETRIES = 12
 
     def handle(self, msg: Message) -> AgentOutput:
         source = msg.payload.get("source", msg.from_agent)

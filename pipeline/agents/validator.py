@@ -323,22 +323,58 @@ class ValidatorAgent(AgentProcess):
                 },
             )
         else:
-            # Persistent retry counter — message payload won't work because
-            # executor creates a fresh message each time, resetting the count.
-            retry_key = f"validator_phase_{phase_num}"
+            # Progress-aware retry: keep going as long as failures are decreasing.
+            # Only escalate when N consecutive cycles make zero improvement.
+            NO_PROGRESS_LIMIT = 3  # consecutive stale cycles before force-advancing
+
+            retry_key      = f"validator_phase_{phase_num}"
+            prev_fail_key  = f"validator_phase_{phase_num}_prev_failures"
+            streak_key     = f"validator_phase_{phase_num}_no_progress"
+
             try:
                 retry_data = self.read_json_state("state/phase_retries.json")
             except Exception:
                 retry_data = {}
-            retry_count = retry_data.get(retry_key, 0) + 1
-            retry_data[retry_key] = retry_count
+
+            # Count failures in this report (pytest FAILED/ERROR lines + import errors)
+            import re as _re
+            fail_patterns = [
+                r'\bFAILED\b', r'\bERROR\b', r'ImportError', r'ModuleNotFoundError',
+                r'AssertionError', r'SyntaxError', r'Traceback',
+            ]
+            current_failures = sum(
+                len(_re.findall(p, report_content))
+                for p in fail_patterns
+            )
+
+            prev_failures  = retry_data.get(prev_fail_key, current_failures + 1)
+            no_progress    = retry_data.get(streak_key, 0)
+            retry_count    = retry_data.get(retry_key, 0) + 1
+            made_progress  = current_failures < prev_failures
+
+            if made_progress:
+                no_progress = 0  # reset streak — it's fixing things
+                logger.info(
+                    "[validator] Phase %d attempt %d: failures %d→%d (progress ✓)",
+                    phase_num, retry_count, prev_failures, current_failures,
+                )
+            else:
+                no_progress += 1
+                logger.info(
+                    "[validator] Phase %d attempt %d: failures %d→%d (no progress %d/%d)",
+                    phase_num, retry_count, prev_failures, current_failures,
+                    no_progress, NO_PROGRESS_LIMIT,
+                )
+
+            retry_data[retry_key]     = retry_count
+            retry_data[prev_fail_key] = current_failures
+            retry_data[streak_key]    = no_progress
             self.write_json_state("state/phase_retries.json", retry_data)
 
-            logger.info("[validator] Phase %d validation failure #%d", phase_num, retry_count)
-
-            if retry_count >= 3:
-                # Clear counter and escalate to manager
-                retry_data.pop(retry_key, None)
+            if no_progress >= NO_PROGRESS_LIMIT:
+                # Truly stuck — same failures N cycles in a row, escalate
+                for k in (retry_key, prev_fail_key, streak_key):
+                    retry_data.pop(k, None)
                 self.write_json_state("state/phase_retries.json", retry_data)
                 out_msg = Message.create(
                     from_agent=self.role,
@@ -347,12 +383,16 @@ class ValidatorAgent(AgentProcess):
                     payload={
                         "signal": "PHASE_STUCK",
                         "phase": phase_num,
-                        "reason": f"Validation failed after {retry_count} fix attempts",
+                        "reason": (
+                            f"No progress after {no_progress} consecutive fix attempts "
+                            f"({current_failures} failures unchanged). Force-advancing."
+                        ),
                         "validation_report": report_content[:2000],
                         "idea_slug": idea_slug,
                     },
                 )
             else:
+                progress_note = "↓ improving" if made_progress else "→ stalled"
                 out_msg = Message.create(
                     from_agent=self.role,
                     to_agent="executor",
@@ -363,10 +403,15 @@ class ValidatorAgent(AgentProcess):
                         "workspace_path": workspace_path,
                         "fix_required": True,
                         "validation_report": report_content[:3000],
-                        "error_summary": f"Validation FAILED (attempt {retry_count}/3). Fix all failing tests.",
+                        "error_summary": (
+                            f"Validation FAILED — attempt {retry_count}, "
+                            f"{current_failures} failures remaining ({progress_note}). "
+                            f"Fix the specific errors listed above."
+                        ),
                         "idea_slug": idea_slug,
                     },
                 )
+
 
         return AgentOutput(
             success=is_pass,
