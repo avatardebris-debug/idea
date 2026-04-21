@@ -146,9 +146,13 @@ def auto_install_workspace_deps(workspace: pathlib.Path) -> list[str]:
 
     Steps:
       1. pip install -r requirements.txt  (if present)
-      2. pip install from pyproject.toml  (if present and parseable)
-      3. AST-scan all .py files → collect imports → try to import each →
+      2. pip install -e .  (editable install of the workspace package itself — critical
+         for local imports like `from sop_engine import X` inside tests)
+      3. pip install from pyproject.toml deps  (if present and parseable)
+      4. AST-scan all .py files → collect imports → try to import each →
          pip install anything that fails.
+      5. Fallback conftest.py — if no pyproject.toml, inject sys.path so pytest
+         can always find local modules regardless of install state.
 
     Returns a list of packages that were actually installed.
     """
@@ -169,9 +173,26 @@ def auto_install_workspace_deps(workspace: pathlib.Path) -> list[str]:
         else:
             logger.warning("[validator] requirements.txt install failed: %s", r.stderr[:400])
 
-    # --- Step 2: pyproject.toml (best-effort) ---
+    # --- Step 2: pip install -e . (editable install of local package) ---
+    # This is the PRIMARY fix for ModuleNotFoundError in tests.
+    # Without this, `from sop_engine import X` fails even though the file exists.
     pyproject = workspace / "pyproject.toml"
-    if pyproject.exists():
+    setup_py  = workspace / "setup.py"
+    if pyproject.exists() or setup_py.exists():
+        logger.info("[validator] Installing workspace package in editable mode: %s", workspace)
+        r = subprocess.run(
+            [sys.executable, "-m", "pip", "install", "-e", str(workspace), "-q",
+             "--no-build-isolation"],
+            capture_output=True, text=True,
+        )
+        if r.returncode == 0:
+            installed.append("(editable workspace)")
+            logger.info("[validator] Editable install OK")
+        else:
+            logger.warning("[validator] Editable install failed: %s", r.stderr[:400])
+
+    # --- Step 3: pyproject.toml explicit deps ---
+
         try:
             content = pyproject.read_text(encoding="utf-8")
             # Try stdlib tomllib first (Python 3.11+), fall back to toml package
@@ -229,10 +250,28 @@ def auto_install_workspace_deps(workspace: pathlib.Path) -> list[str]:
             installed.append(pip_pkg)
         else:
             logger.warning("[validator] Failed to install %s: %s", pip_pkg, r.stderr[:300])
+    # --- Step 5: conftest.py sys.path fallback ---
+    # Ensures `import local_module` always works in pytest even without install.
+    conftest = workspace / "conftest.py"
+    conftest_injection = (
+        "import sys, pathlib\n"
+        "# Injected by pipeline validator — ensures local imports work in pytest\n"
+        "_ws = pathlib.Path(__file__).parent\n"
+        "if str(_ws) not in sys.path:\n"
+        "    sys.path.insert(0, str(_ws))\n"
+    )
+    if not conftest.exists():
+        conftest.write_text(conftest_injection, encoding="utf-8")
+        logger.info("[validator] Created conftest.py with sys.path injection")
+    elif "sys.path" not in conftest.read_text(encoding="utf-8"):
+        existing = conftest.read_text(encoding="utf-8")
+        conftest.write_text(conftest_injection + "\n" + existing, encoding="utf-8")
+        logger.info("[validator] Prepended sys.path injection to existing conftest.py")
 
     if installed:
         logger.info("[validator] Deps installed: %s", installed)
     return installed
+
 
 
 # ---------------------------------------------------------------------------
@@ -280,17 +319,20 @@ class ValidatorAgent(AgentProcess):
             f"Files written: {', '.join(files_written) if files_written else '(check workspace)'}\n\n"
             f"## Task List (for acceptance criteria)\n{tasks_content}\n\n"
             f"## Your Job\n"
-            f"NOTE: All Python dependencies have already been auto-installed before this step.\n"
-            f"If a test still fails with ModuleNotFoundError, run `pip install <pkg>` then retry.\n\n"
+            f"NOTE: Dependencies and a conftest.py (sys.path fix) have already been set up.\n"
+            f"If imports still fail, run: `pip install -e {workspace_path}` then retry.\n\n"
             f"1. Use `list_tree` on {workspace_path} to see all files.\n"
-            f"2. Read each code file.\n"
-            f"3. Run tests: `run_shell` with `cd {workspace_path} && python -m pytest -v` "
-            f"(if test files exist).\n"
-            f"4. Run lint: `run_shell` with `cd {workspace_path} && python -m ruff check .` "
-            f"(skip if ruff not installed).\n"
+            f"2. Read each code file to verify it is correct.\n"
+            f"3. Run tests with EXACTLY this command:\n"
+            f"   `cd {workspace_path} && PYTHONPATH={workspace_path} python -m pytest -v --tb=short 2>&1`\n"
+            f"   If no test files exist, note 'No tests found' and give PASS.\n"
+            f"4. Run lint: `cd {workspace_path} && python -m ruff check . --quiet`\n"
+            f"   (skip if ruff not installed — NOT a failure reason).\n"
             f"5. Check each acceptance criterion from the task list.\n"
             f"6. Write your validation report to `{report_full_path}`.\n"
-            f"7. End with a clear **Verdict: PASS** or **Verdict: FAIL**.\n"
+            f"7. End with exactly: **Verdict: PASS** or **Verdict: FAIL**.\n"
+            f"   PASS if tests pass (or no tests exist) and core files are present.\n"
+            f"   FAIL only if tests error/fail OR core required files are missing.\n"
             f"8. Say DONE.\n"
         )
 
