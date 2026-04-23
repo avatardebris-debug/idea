@@ -1,0 +1,49 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "summarizer-tool"
+version = "1.0.0"
+description = "A CLI tool for summarizing YouTube videos and PDFs using local LLMs"
+readme = "README.md"
+requires-python = ">=3.10"
+license = {text = "MIT"}
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+]
+dependencies = [
+    "yt-dlp>=2023.12.30",
+    "llama-cpp-python>=0.2.0",
+    "pdfplumber>=0.10.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.4.0",
+    "pytest-cov>=4.1.0",
+]
+
+[project.scripts]
+summarizer = "summarizer_tool.__main__:main"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["summarizer_tool*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = "test_*.py"
+python_classes = "Test*"
+python_functions = "test_*"
+addopts = "-v --tb=short"
+markers = [
+    "integration: marks tests as integration tests",
+    "unit: marks tests as unit tests",
+]

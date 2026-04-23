@@ -31,7 +31,12 @@ self_improving_coding_agent/
 SICA/
 
 # --- Runtime state (not committed — use resume to transfer) ---
-.pipeline/
+# .pipeline/projects/ is intentionally tracked so cloud instances can git pull
+.pipeline/queues/
+.pipeline/logs/
+.pipeline/state/pipeline_status.json
+.pipeline/state/agent_registry.json
+.pipeline/pipeline_extract*/
 .agent/
 experiments.tsv
 state_*.tar.gz

@@ -1,0 +1,15 @@
+# Test video URLs for YouTube summarization integration testing
+# Use these URLs to test the YouTube summarization functionality
+# Note: Some videos may not have transcripts available
+
+# Public videos with transcripts (manual)
+https://www.youtube.com/watch?v=dQw4w9WgXcQ
+
+# Public videos with auto-generated transcripts
+https://www.youtube.com/watch?v=jNQXAC9IVRw
+
+# Short video for quick testing
+https://www.youtube.com/watch?v=L_jWHffIx5E
+
+# Note: Videos change availability over time. If a test fails,
+# try using a different public YouTube video with captions enabled.

@@ -25,6 +25,12 @@ import textwrap
 import time
 from datetime import datetime, timezone
 
+_ANSI_ESCAPE = re.compile(r'(?:\x1B[@-Z\\-_]|[\x80-\x9A\x9C-\x9F]|(?:\x1B\[|\x9B)[0-?]*[ -/]*[@-~]|\x1B\][^\x07\x1B]*(?:\x07|\x1B\\))')
+
+def _clean(text: str) -> str:
+    """Strip ANSI/OSC escape sequences from a string."""
+    return _ANSI_ESCAPE.sub('', text)
+
 # Ensure project root is on path
 PROJECT_ROOT = pathlib.Path(__file__).parent.parent
 sys.path.insert(0, str(PROJECT_ROOT))
@@ -551,17 +557,15 @@ def run_pipeline(
                 tasks_total = idea_state.get("tasks_total")
                 task_str = f" {tasks_done}/{tasks_total}✓" if tasks_total else ""
 
-                status_line = (
+                status_line = _clean(
                     f"  [{elapsed_m:.0f}m] agents={running_agents}/{len(AGENT_ROLES)} "
                     f"pending={pending_total} phase={phase}{task_str}{title_str}"
                 )
-                if sys.stdout.isatty():
-                    print(status_line + "    ", end="\r", flush=True)
-                else:
-                    # Non-interactive (redirected to log) — print every 4 checks
-                    if _status_count % 4 == 0:
-                        print(status_line, flush=True)
-                    _status_count += 1
+                # Always print on a new line — ’\r’ tricks break on cloud/Windows terminals.
+                # Throttle to every 4 checks (~4 min) to keep output readable.
+                if _status_count % 4 == 0:
+                    print(status_line, flush=True)
+                _status_count += 1
 
 
                 if all_empty and not from_list:

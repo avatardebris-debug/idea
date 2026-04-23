@@ -7,11 +7,7 @@ Ideas are processed top-to-bottom. The pipeline picks the first unchecked `[ ]` 
 
 ## Ideas
 
-
-
-- [ ] **[drop servicing tool]** — [store SOPs and workflows and enable LLM scaling and agentic scaling for perfoming bulk tasks.]
-
-- [ ] **[email tool]** — [email processing, rules, systems, agentic instruction, systems, automations. TOol for automating the searching in emails and attachments to follow rules and organize into folders according to these rules]
+- [ ] **[email tool]** — [email processing, rules, systems, agentic instruction, systems, automations. TOol for automating the searching in emails and attachments to follow rules and organize into folders according to these rules. Ability to export emails or systematize an export/import.]
 
 - [ ] **[social media management/etc]** — [airtable like platform or system for managing social media posts and accounts. AI can help generate content and schedule posts and scale]
 
@@ -36,8 +32,6 @@ Ideas are processed top-to-bottom. The pipeline picks the first unchecked `[ ]` 
 - [ ] **[newsletter /online profit environment for LLM RL training and sims.]** — [newsletter /online profit environment for LLM RL training and sims.]
 
 - [ ] **[dropship/service/ecommerce. autoSEO autometa]** — [dropship/service/ecommerce. autoSEO autometa]
-
-- [ ] **[game/agent]** — [game/agent]
 
 - [ ] **[Zillow]** — [tool using redfin/zillow to trigger criteria alert to phone/email.]
 
@@ -74,3 +68,5 @@ Ideas are processed top-to-bottom. The pipeline picks the first unchecked `[ ]` 
 - [ ] **[tim ferriss learning tool]** — [Using meta-learning accelerated learning techniques to help deconstruct topic, DISSS. (decnstruction, selection, sequencing, stakes) Gather material of various media, summarize sources, outline, provide an LLM/RAG for asking/answering about the details, deep dive and 80/20 extraction of most important parts, lesson plans sequencing of the parts, etc. Cafe. Compression, Frequency, Encoding for memory tricks.]
 
 - [ ] **[fiverr job automation tool]** — [create automated tasks on fiverr.]
+
+- [ ] **[drop servicing tool]** — [store SOPs and workflows and enable LLM scaling and agentic scaling for perfoming bulk tasks.]
