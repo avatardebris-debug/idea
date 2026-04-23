@@ -291,10 +291,44 @@ class OllamaAdapter(LLMBase):
             normalized.append(msg)
         return normalized
 
-    def chat(self, messages, tools=None) -> Message:
-        import json as _json
+    def _ollama_is_alive(self) -> bool:
+        """Check if Ollama server is reachable."""
         import urllib.request
         import urllib.error
+        try:
+            with urllib.request.urlopen(f"{self.base_url}/api/tags", timeout=10) as r:
+                return r.status == 200
+        except Exception:
+            return False
+
+    def _try_restart_ollama(self) -> None:
+        """Best-effort attempt to restart the Ollama server process."""
+        import subprocess
+        import time
+        import logging
+        log = logging.getLogger(__name__)
+        try:
+            subprocess.run(["pkill", "-f", "ollama serve"], capture_output=True)
+            time.sleep(3)
+            subprocess.Popen(
+                ["ollama", "serve"],
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                start_new_session=True,
+            )
+            log.warning("OllamaAdapter: attempted ollama serve restart")
+            time.sleep(8)  # give it time to come up
+        except Exception as exc:
+            log.warning("OllamaAdapter: restart attempt failed: %s", exc)
+
+    def chat(self, messages, tools=None) -> Message:
+        import json as _json
+        import time
+        import logging
+        import urllib.request
+        import urllib.error
+
+        log = logging.getLogger(__name__)
 
         options: dict[str, Any] = {
             "temperature": self.temperature,
@@ -315,21 +349,49 @@ class OllamaAdapter(LLMBase):
             ]
 
         data = _json.dumps(payload).encode("utf-8")
-        req = urllib.request.Request(
-            f"{self.base_url}/api/chat",
-            data=data,
-            headers={"Content-Type": "application/json"},
-            method="POST",
-        )
 
-        try:
-            with urllib.request.urlopen(req, timeout=300) as resp:
-                raw = _json.loads(resp.read().decode("utf-8"))
-        except urllib.error.HTTPError as e:
-            body = e.read().decode("utf-8", errors="replace")[:400]
-            raise RuntimeError(f"Ollama HTTP {e.code}: {body}") from e
-        except urllib.error.URLError as e:
-            raise RuntimeError(f"Ollama connection failed: {e}") from e
+        # Retry with exponential backoff for transient Ollama failures (OOM/EOF/500)
+        max_retries = 5
+        backoff = 30  # seconds — start at 30s, double each attempt
+        last_error: Exception | None = None
+
+        for attempt in range(max_retries + 1):
+            req = urllib.request.Request(
+                f"{self.base_url}/api/chat",
+                data=data,
+                headers={"Content-Type": "application/json"},
+                method="POST",
+            )
+            try:
+                with urllib.request.urlopen(req, timeout=300) as resp:
+                    raw = _json.loads(resp.read().decode("utf-8"))
+                break  # success — exit retry loop
+
+            except urllib.error.HTTPError as e:
+                body = e.read().decode("utf-8", errors="replace")[:400]
+                last_error = RuntimeError(f"Ollama HTTP {e.code}: {body}")
+                # Only retry on 500 (crash/OOM) — surface 4xx immediately
+                if e.code != 500:
+                    raise last_error from e
+
+            except urllib.error.URLError as e:
+                last_error = RuntimeError(f"Ollama connection failed: {e}")
+
+            # Retry path — check health and wait
+            if attempt < max_retries:
+                wait = min(backoff * (2 ** attempt), 300)  # cap at 5 min
+                log.warning(
+                    "OllamaAdapter: attempt %d/%d failed (%s) — waiting %ds before retry",
+                    attempt + 1, max_retries, last_error, wait,
+                )
+                time.sleep(wait)
+                if not self._ollama_is_alive():
+                    log.warning("OllamaAdapter: Ollama appears down — attempting restart")
+                    self._try_restart_ollama()
+                    # Wait for model to load back into VRAM
+                    time.sleep(15)
+            else:
+                raise last_error  # all retries exhausted
 
         msg = raw.get("message", {})
         content = msg.get("content", "") or ""
