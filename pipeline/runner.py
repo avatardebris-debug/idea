@@ -454,6 +454,11 @@ def run_pipeline(
     has_work = False
 
     if resume:
+        # Resume always acts like --from-list: keep running until ALL projects
+        # are done, not just the first queue drain.  This prevents the runner
+        # from exiting when a message is in 'processing' state and the pending
+        # queue looks empty to the health check.
+        from_list = True
         has_work = check_resume(bus)
         if not has_work:
             # Queues empty but project state may exist — try rebuilding from state
