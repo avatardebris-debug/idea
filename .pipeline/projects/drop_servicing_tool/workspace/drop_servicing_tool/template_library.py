@@ -1,0 +1,113 @@
+"""Template Library for multi-agent SOP execution.
+
+Manages registration, listing, and deletion of prompt templates
+with category support and builtin templates.
+"""
+
+from __future__ import annotations
+
+import os
+from pathlib import Path
+from typing import Dict, List, Optional
+
+
+class TemplateLibrary:
+    """In-memory + filesystem-backed template library."""
+
+    def __init__(self, base_dir: Optional[Path] = None):
+        self._base = base_dir or Path(os.environ.get("DST_TEMPLATES_DIR", "."))
+        self._templates_dir = self._base / "templates"
+        self._templates_dir.mkdir(parents=True, exist_ok=True)
+        self._builtin_dir = self._templates_dir / "builtin"
+        self._builtin_dir.mkdir(parents=True, exist_ok=True)
+        # In-memory store (name -> content)
+        self._store: Dict[str, str] = {}
+        # Category mapping (name -> category)
+        self._categories: Dict[str, str] = {}
+
+    # ---- Registration ----
+
+    def register_template(
+        self,
+        name: str,
+        content: str,
+        category: Optional[str] = None,
+    ) -> None:
+        """Register a template by name."""
+        self._store[name] = content
+        if category:
+            self._categories[name] = category
+        else:
+            self._categories[name] = "default"
+        # Persist to disk
+        if category and category != "default":
+            target = self._templates_dir / category / f"{name}.md"
+        else:
+            target = self._templates_dir / f"{name}.md"
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text(content, encoding="utf-8")
+
+    # ---- Retrieval ----
+
+    def get_template(self, name: str) -> str:
+        """Get a template by name.
+
+        Raises:
+            FileNotFoundError:  If no template with *name* exists.
+        """
+        if name in self._store:
+            return self._store[name]
+        # Check filesystem
+        for root in [self._templates_dir, self._builtin_dir]:
+            for sub in root.rglob(f"{name}.md"):
+                return sub.read_text(encoding="utf-8")
+        raise FileNotFoundError(f"Template '{name}' not found.")
+
+    # ---- Listing ----
+
+    def list_templates(self, category: Optional[str] = None) -> List[str]:
+        """List template names, optionally filtered by *category*."""
+        if category is None:
+            return list(self._store.keys())
+        return [n for n, c in self._categories.items() if c == category]
+
+    # ---- Deletion ----
+
+    def delete_template(self, name: str) -> bool:
+        """Delete a template. Returns True if deleted, False if not found."""
+        if name not in self._store:
+            return False
+        del self._store[name]
+        if name in self._categories:
+            del self._categories[name]
+        # Remove from disk
+        for pattern in ["*.md"]:
+            for p in self._templates_dir.rglob(f"{name}.md"):
+                p.unlink(missing_ok=True)
+        return True
+
+    # ---- Builtin templates ----
+
+    BUILTIN_TEMPLATES: Dict[str, str] = {
+        "default_step": (
+            "# Step: {{step_name}}\n"
+            "{{step_description}}\n\n"
+            "## Input\n"
+            "{{input_context}}\n\n"
+            "## Previous Output\n"
+            "{{previous_output}}\n\n"
+            "## Output Format\n"
+            "{{output_format}}"
+        ),
+    }
+
+    def load_builtin_templates(self) -> None:
+        """Load all builtin templates into the library."""
+        for name, content in self.BUILTIN_TEMPLATES.items():
+            if name not in self._store:
+                self.register_template(name, content, category="builtin")
+        # Persist builtin dir
+        for name, content in self.BUILTIN_TEMPLATES.items():
+            target = self._builtin_dir / f"{name}.md"
+            target.parent.mkdir(parents=True, exist_ok=True)
+            target.write_text(content, encoding="utf-8")

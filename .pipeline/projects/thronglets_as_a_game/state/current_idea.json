@@ -1,0 +1,8 @@
+{
+  "title": "[thronglets as a game]",
+  "description": "[each thronglet is an agent, each agent has a 2d world and you can prompt it and it can visualize interactions with the others. Turn system management into a game where the interactions of the game map to realworld usefulness and gamifies system buildling]",
+  "status": "phase_1_validating",
+  "total_phases": 1,
+  "tasks_done": 2,
+  "tasks_total": 6
+}

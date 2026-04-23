@@ -1,0 +1,6 @@
+{
+  "title": "[Zillow]",
+  "description": "[tool using redfin/zillow to trigger criteria alert to phone/email.]",
+  "status": "phase_1_executing",
+  "total_phases": 1
+}

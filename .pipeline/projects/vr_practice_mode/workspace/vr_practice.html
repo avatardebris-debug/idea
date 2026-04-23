@@ -1,0 +1,271 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Thronglets VR Practice Mode</title>
+
+  <!-- A-Frame 1.6.0 (stable, WebXR-ready) -->
+  <script src="https://aframe.io/releases/1.6.0/aframe.min.js"></script>
+
+  <!-- A-Frame Extras for additional components -->
+  <script src="https://unpkg.com/aframe-extras@7.2.0/dist/aframe-extras.min.js"></script>
+
+  <style>
+    body { margin: 0; overflow: hidden; font-family: 'Segoe UI', system-ui, sans-serif; }
+    #loading-overlay {
+      position: fixed; inset: 0;
+      background: #0f0f23;
+      display: flex; flex-direction: column;
+      align-items: center; justify-content: center;
+      z-index: 9999; transition: opacity 0.6s ease;
+    }
+    #loading-overlay.hidden { opacity: 0; pointer-events: none; }
+    #loading-overlay h1 {
+      color: #4fc3f7; font-size: 2rem; margin-bottom: 1rem;
+      text-shadow: 0 0 20px rgba(79,195,247,0.5);
+    }
+    .loader {
+      width: 60px; height: 60px; border-radius: 50%;
+      border: 4px solid #1a1a2e; border-top-color: #4fc3f7;
+      animation: spin 1s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    #info-panel {
+      position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%);
+      background: rgba(15,15,35,0.85); color: #ccc; padding: 12px 24px;
+      border-radius: 12px; font-size: 0.85rem; z-index: 100;
+      backdrop-filter: blur(10px); border: 1px solid rgba(79,195,247,0.2);
+      text-align: center; max-width: 500px;
+    }
+    #info-panel kbd {
+      background: rgba(79,195,247,0.15); padding: 2px 6px; border-radius: 4px;
+      font-family: monospace; font-size: 0.8rem;
+    }
+
+    /* Detail Panel */
+    #detail-panel {
+      position: fixed; top: 20px; right: 20px;
+      width: 320px;
+      background: rgba(15, 15, 35, 0.95);
+      color: #e0e0e0;
+      padding: 20px;
+      border-radius: 16px;
+      border: 1px solid rgba(79, 195, 247, 0.3);
+      backdrop-filter: blur(12px);
+      box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+      transform: translateX(360px);
+      transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+      z-index: 200;
+      pointer-events: none;
+    }
+    #detail-panel.visible {
+      transform: translateX(0);
+      pointer-events: auto;
+    }
+    #detail-panel .panel-header {
+      display: flex; align-items: center; gap: 12px;
+      margin-bottom: 16px; padding-bottom: 12px;
+      border-bottom: 1px solid rgba(79, 195, 247, 0.2);
+    }
+    #detail-panel .panel-header .avatar-icon {
+      width: 48px; height: 48px; border-radius: 50%;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 24px;
+    }
+    #detail-panel .panel-header h2 {
+      margin: 0; font-size: 1.25rem; color: #ffffff;
+    }
+    #detail-panel .panel-header .role {
+      font-size: 0.85rem; color: #9e9e9e; margin-top: 2px;
+    }
+    #detail-panel .panel-body .stat-row {
+      display: flex; justify-content: space-between; align-items: center;
+      padding: 8px 0; border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+    }
+    #detail-panel .panel-body .stat-row:last-child { border-bottom: none; }
+    #detail-panel .panel-body .stat-label { color: #9e9e9e; font-size: 0.9rem; }
+    #detail-panel .panel-body .stat-value { color: #ffffff; font-weight: 600; font-size: 0.9rem; }
+    #detail-panel .panel-body .stat-value.critical { color: #f44336; }
+    #detail-panel .panel-body .stat-value.warning { color: #ff9800; }
+    #detail-panel .panel-body .stat-value.healthy { color: #4caf50; }
+    #detail-panel .panel-body .stat-value.info { color: #4fc3f7; }
+
+    /* Proximity Alert */
+    #proximity-alert {
+      position: fixed; top: 20px; left: 50%; transform: translateX(-50%) translateY(-100px);
+      background: rgba(244, 67, 54, 0.9);
+      color: #ffffff;
+      padding: 12px 24px;
+      border-radius: 12px;
+      font-size: 0.95rem;
+      font-weight: 600;
+      z-index: 200;
+      transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+      box-shadow: 0 4px 20px rgba(244, 67, 54, 0.4);
+      pointer-events: none;
+    }
+    #proximity-alert.visible {
+      transform: translateX(-50%) translateY(0);
+    }
+    #proximity-alert.warning {
+      background: rgba(255, 152, 0, 0.9);
+      box-shadow: 0 4px 20px rgba(255, 152, 0, 0.4);
+    }
+
+    /* Hover Indicator */
+    #hover-indicator {
+      position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%);
+      width: 40px; height: 40px;
+      border: 2px solid rgba(79, 195, 247, 0.6);
+      border-radius: 50%;
+      pointer-events: none;
+      opacity: 0;
+      transition: opacity 0.2s ease, transform 0.2s ease;
+      z-index: 150;
+    }
+    #hover-indicator.visible {
+      opacity: 1;
+      transform: translate(-50%, -50%) scale(1.2);
+    }
+    #hover-indicator::after {
+      content: '';
+      position: absolute;
+      top: 50%; left: 50%; transform: translate(-50%, -50%);
+      width: 4px; height: 4px;
+      background: #4fc3f7;
+      border-radius: 50%;
+    }
+  </style>
+</head>
+<body>
+
+  <!-- Loading overlay -->
+  <div id="loading-overlay">
+    <h1>🌐 Thronglets VR</h1>
+    <div class="loader"></div>
+    <p style="color:#666; margin-top:1rem;">Loading world…</p>
+  </div>
+
+  <!-- Info panel -->
+  <div id="info-panel">
+    <strong>Controls:</strong>
+    <span id="desktop-controls">
+      <kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> Move ·
+      Mouse Look · <kbd>Click</kbd> Teleport
+    </span>
+    <span id="vr-controls" style="display:none;">
+      <kbd>Trigger</kbd> Teleport · <kbd>Joystick</kbd> Move
+    </span>
+  </div>
+
+  <!-- Detail Panel -->
+  <div id="detail-panel">
+    <div class="panel-header">
+      <div class="avatar-icon" id="panel-avatar-icon"></div>
+      <div>
+        <h2 id="panel-name">—</h2>
+        <div class="role" id="panel-role">—</div>
+      </div>
+    </div>
+    <div class="panel-body">
+      <div class="stat-row">
+        <span class="stat-label">Health</span>
+        <span class="stat-value" id="panel-health">—</span>
+      </div>
+      <div class="stat-row">
+        <span class="stat-label">Role</span>
+        <span class="stat-value info" id="panel-role-detail">—</span>
+      </div>
+      <div class="stat-row">
+        <span class="stat-label">Uptime</span>
+        <span class="stat-value" id="panel-uptime">—</span>
+      </div>
+      <div class="stat-row">
+        <span class="stat-label">Last Seen</span>
+        <span class="stat-value" id="panel-last-seen">—</span>
+      </div>
+      <div class="stat-row">
+        <span class="stat-label">Location</span>
+        <span class="stat-value info" id="panel-location">—</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- Proximity Alert -->
+  <div id="proximity-alert">⚠️ Thronglet in Critical State</div>
+
+  <!-- Hover Indicator -->
+  <div id="hover-indicator"></div>
+
+  <!-- A-Frame Scene -->
+  <a-scene
+    id="scene"
+    vr-mode-ui="enabled: true"
+    renderer="antialias: true; alpha: true; colorManagement: true; physicallyCorrectLights: true"
+    loading-screen="enabled: false"
+    fog="type: exponential; color: #1a1a2e; density: 0.03"
+  >
+
+    <!-- Assets -->
+    <a-assets>
+      <canvas id="grid-canvas" width="512" height="512"></canvas>
+      <a-mixin id="grid-texture" material="src: #grid-canvas; repeat: 20 20; transparent: true; opacity: 0.6"></a-mixin>
+    </a-assets>
+
+    <!-- Camera rig -->
+    <a-entity id="camera-rig" position="0 1.6 5">
+      <a-camera
+        id="camera"
+        position="0 0 0"
+        look-controls="pointerLockEnabled: false"
+        wasd-controls="enabled: true"
+        fov="70"
+        far="100"
+      >
+        <!-- Reticle for teleportation -->
+        <a-entity
+          id="reticle"
+          geometry="primitive: ring; radiusInner: 0.05; radiusOuter: 0.07"
+          material="color: #4fc3f7; opacity: 0.8; shader: flat"
+          position="0 0 -2"
+          rotation="-90 0 0"
+          visible="false"
+        ></a-entity>
+      </a-camera>
+    </a-entity>
+
+    <!-- Lighting -->
+    <a-entity light="type: ambient; color: #444; intensity: 0.4"></a-entity>
+    <a-entity light="type: directional; color: #fff; intensity: 0.8; castShadow: true" position="-5 10 5"></a-entity>
+    <a-entity light="type: hemisphere; color: #4fc3f7; groundColor: #1a1a2e; intensity: 0.3"></a-entity>
+
+    <!-- Skybox (gradient) -->
+    <a-sky id="skybox" color="#0a0a1a" radius="100"></a-sky>
+
+    <!-- Ground plane with grid -->
+    <a-entity id="ground" position="0 0 0">
+      <a-plane
+        id="ground-plane"
+        width="40" height="40"
+        rotation="-90 0 0"
+        mixin="grid-texture"
+        material="color: #1a1a2e; side: double"
+      ></a-plane>
+      <!-- Grid lines overlay -->
+      <a-entity id="grid-lines" position="0 0.01 0" rotation="-90 0 0">
+        <!-- Generated via JS -->
+      </a-entity>
+    </a-entity>
+
+    <!-- Thronglets container (populated by JS) -->
+    <a-entity id="thronglets-container"></a-entity>
+
+    <!-- Connection lines container (populated by JS) -->
+    <a-entity id="connections-container"></a-entity>
+
+  </a-scene>
+
+  <script src="vr_practice.js"></script>
+</body>
+</html>
