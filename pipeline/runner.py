@@ -327,13 +327,14 @@ def check_resume(bus: MessageBus) -> bool:
     return False
 
 def _rebuild_queues_from_state(bus: MessageBus) -> int:
-    """Re-inject queue messages for in-progress projects that have no queued work.
+    """Re-inject a queue message for ONE in-progress project that has no queued work.
 
-    This enables resume from a zip: if .pipeline/projects/ was restored but
-    .pipeline/queues/ was not (or was empty), this reconstructs the correct
-    messages so agents can pick up where they left off.
+    Called at startup and during the health-check loop when queues appear empty.
+    Re-queues ONE project at a time (matching seed_from_master_list behaviour)
+    so the pipeline works serially through incomplete projects rather than
+    dumping all of them into the queue at once.
 
-    Returns the number of projects re-queued.
+    Returns the number of projects re-queued (0 or 1).
     """
     if bus.has_active_work():
         return 0  # Queues are already populated — nothing to rebuild
@@ -420,10 +421,10 @@ def _rebuild_queues_from_state(bus: MessageBus) -> int:
 
         bus.send(Message.create(from_agent="runner", to_agent=agent,
                                 type="task", payload=payload))
-        injected += 1
         print(f"  🔁 Re-queued '{title}' → {agent} (was: {status})")
+        return 1  # One at a time — next project picked up after this one completes
 
-    return injected
+    return 0  # No incomplete projects found
 
 
 
