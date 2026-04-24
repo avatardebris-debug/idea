@@ -280,7 +280,7 @@ def auto_install_workspace_deps(workspace: pathlib.Path) -> list[str]:
 
 class ValidatorAgent(AgentProcess):
     role = "validator"
-    max_steps = 20
+    max_steps = 12
     temperature = 0.2   # deterministic test running
     think = False       # mechanical validation — no CoT needed
 
@@ -367,7 +367,7 @@ class ValidatorAgent(AgentProcess):
         else:
             # Progress-aware retry: keep going as long as failures are decreasing.
             # Only escalate when N consecutive cycles make zero improvement.
-            NO_PROGRESS_LIMIT = 3  # consecutive stale cycles before force-advancing
+            NO_PROGRESS_LIMIT = 2  # consecutive stale cycles before force-advancing
 
             retry_key      = f"validator_phase_{phase_num}"
             prev_fail_key  = f"validator_phase_{phase_num}_prev_failures"
