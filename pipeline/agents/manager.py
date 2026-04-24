@@ -389,8 +389,15 @@ class ManagerAgent(AgentProcess):
         )]
 
     def _mark_idea_complete(self) -> None:
-        """Mark the current idea as done in master_ideas.md."""
-        idea_state = self.read_json_state("state/current_idea.json")
+        """Mark the current idea as done in both state file and master_ideas.md."""
+        # --- Update current_idea.json (critical for _rebuild_queues_from_state) ---
+        try:
+            idea_state = self.read_json_state("state/current_idea.json")
+            idea_state["status"] = "complete"
+            self.write_json_state("state/current_idea.json", idea_state)
+        except Exception:
+            idea_state = {}
+
         title = idea_state.get("title", "")
         if not title:
             return

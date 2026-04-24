@@ -364,6 +364,28 @@ def _rebuild_queues_from_state(bus: MessageBus) -> int:
         if status in ("", "complete"):
             continue
 
+        # Skip projects whose validator has already hit the stall limit —
+        # these should have been force-advanced by the manager, but if the
+        # manager message was lost, don't loop forever on the same project.
+        retries_file = project_dir / "state" / "phase_retries.json"
+        if retries_file.exists():
+            try:
+                retries = json.loads(retries_file.read_text(encoding="utf-8"))
+                # Check for any no_progress streak >= 2 (our stall limit)
+                for k, v in retries.items():
+                    if "no_progress" in k and isinstance(v, int) and v >= 2:
+                        # Force-mark as complete so it never comes back
+                        state["status"] = "complete"
+                        state_file.write_text(json.dumps(state, indent=2), encoding="utf-8")
+                        print(f"  ⏭  Force-completed stalled project '{title}' (stuck {v} cycles)")
+                        break
+                else:
+                    retries = None  # didn't break — not stalled
+                if state.get("status") == "complete":
+                    continue
+            except Exception:
+                pass
+
         # Detect which phase and step we were on
         phase_match = re.match(r"phase_(\d+)_(\w+)", status)
         if phase_match:
