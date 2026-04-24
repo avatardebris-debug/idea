@@ -586,7 +586,15 @@ def run_pipeline(
                     # all_queues_empty() only counts 'pending'; has_active_work()
                     # counts both, preventing premature seeding.
                     if not bus.has_active_work():
-                        if not seed_from_master_list(bus):
+                        # Before seeding a NEW idea, re-scan project state files
+                        # for any in-progress project whose queue message was lost
+                        # (e.g. Ollama crash ate the message without nacking it).
+                        # Re-queue them first — only move to new ideas when all
+                        # existing projects are truly complete.
+                        orphaned = _rebuild_queues_from_state(bus)
+                        if orphaned:
+                            print(f"  🔁 Re-queued {orphaned} orphaned project(s) — not seeding new ideas yet")
+                        elif not seed_from_master_list(bus):
                             print(f"\n  ✓ All ideas processed — pipeline complete.")
                             break
 
