@@ -239,9 +239,18 @@ class AgentProcess:
 
         Also reads task checkbox counts from the phase tasks.md so the status
         line can show '3/8 tasks' alongside the phase name.
+
+        IMPORTANT: Never overwrites 'complete' or 'stalled' — those are terminal
+        states set by the runner/manager.  In-flight agents may finish after a
+        force-complete; their status writes must be silently ignored.
         """
         try:
             existing = self.read_json_state("state/current_idea.json")
+
+            # Guard: terminal states are sacred — never overwrite them
+            if existing.get("status") in ("complete", "stalled"):
+                return
+
             existing["status"] = status
 
             # Optionally count task progress
