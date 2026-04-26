@@ -253,19 +253,50 @@ class AgentProcess:
 
             existing["status"] = status
 
-            # Optionally count task progress
+            # Optionally count task progress — ONLY for the current phase
             if phase_num is not None:
                 import re as _re
                 tasks_content = self.read_state_file(f"phases/phase_{phase_num}/tasks.md")
-                if tasks_content:
-                    total = len(_re.findall(r'^- \[[ x]\]', tasks_content, _re.MULTILINE))
-                    done  = len(_re.findall(r'^- \[x\]', tasks_content, _re.MULTILINE | _re.IGNORECASE))
+                phase_tasks = self._extract_phase_tasks(tasks_content, phase_num)
+                if phase_tasks:
+                    total = len(_re.findall(r'^- \[[ x]\]', phase_tasks, _re.MULTILINE))
+                    done  = len(_re.findall(r'^- \[x\]', phase_tasks, _re.MULTILINE | _re.IGNORECASE))
                     existing["tasks_done"] = done
                     existing["tasks_total"] = total
 
             self.write_json_state("state/current_idea.json", existing)
         except Exception:
             pass  # Non-critical — don't break the pipeline over a status update
+
+    @staticmethod
+    def _extract_phase_tasks(tasks_content: str, phase_num: int) -> str:
+        """Extract only the current phase's task section from tasks.md.
+
+        Some tasks.md files contain all phases in one file.  This extracts
+        ONLY the section belonging to `phase_num` so that task counts and
+        validation are scoped correctly.
+
+        Heuristic: find the heading that matches 'Phase <N>' (any level),
+        then capture everything until the next 'Phase <N+1>' heading or EOF.
+        If no phase heading is found, return the full content (single-phase file).
+        """
+        import re as _re
+        # Match ## Phase 1, ### Phase 1, # Phase 1: ..., etc.
+        pattern = rf'^(#{1,4})\s+(?:.*?)?Phase\s+{phase_num}\b.*$'
+        match = _re.search(pattern, tasks_content, _re.MULTILINE | _re.IGNORECASE)
+        if not match:
+            return tasks_content  # No phase heading — assume whole file is this phase
+
+        start = match.start()
+        # Find the NEXT phase heading (Phase N+1, N+2, etc.)
+        next_pattern = rf'^#{1,4}\s+(?:.*?)?Phase\s+(?:{phase_num + 1}|{phase_num + 2}|{phase_num + 3})\b'
+        next_match = _re.search(next_pattern, tasks_content[match.end():], _re.MULTILINE | _re.IGNORECASE)
+        if next_match:
+            end = match.end() + next_match.start()
+        else:
+            end = len(tasks_content)
+
+        return tasks_content[start:end]
 
     # --- Prompt construction ---
 

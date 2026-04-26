@@ -332,11 +332,12 @@ class ManagerAgent(AgentProcess):
             pass
 
     def _count_tasks(self, phase_num: int) -> tuple[int, int]:
-        """Return (done, total) task counts from the phase tasks.md checkbox list."""
+        """Return (done, total) task counts for the CURRENT phase only."""
         import re as _re
-        content = self.read_state_file(f"phases/phase_{phase_num}/tasks.md")
-        if not content:
+        raw = self.read_state_file(f"phases/phase_{phase_num}/tasks.md")
+        if not raw:
             return 0, 0
+        content = self._extract_phase_tasks(raw, phase_num)
         total = len(_re.findall(r'^- \[[ x]\]', content, _re.MULTILINE))
         done  = len(_re.findall(r'^- \[x\]',    content, _re.MULTILINE | _re.IGNORECASE))
         return done, total

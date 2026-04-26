@@ -65,8 +65,9 @@ class ExecutorAgent(AgentProcess):
                        or msg.payload.get("fix_instructions", ""))
         review_path = msg.payload.get("review_path", "")
 
-        # Always read these upfront
-        tasks_content = self.read_state_file(tasks_path)
+        # Always read these upfront — scoped to current phase only
+        raw_tasks = self.read_state_file(tasks_path)
+        tasks_content = self._extract_phase_tasks(raw_tasks, phase_num)
         master_plan = self.read_state_file("state/master_plan.md")
         workspace = self.get_workspace_path()
         tasks_full_path = self._project_path(tasks_path)
@@ -102,9 +103,11 @@ class ExecutorAgent(AgentProcess):
         else:
             shared_libs_path = str(self._shared_libs_dir)
             task_prompt = (
-                f"You are implementing Phase {phase_num} of a project.\n\n"
+                f"You are implementing Phase {phase_num} of a project.\n"
+                f"IMPORTANT: Only implement Phase {phase_num} tasks below. "
+                f"Do NOT implement tasks from other phases.\n\n"
                 f"## Master Plan\n{master_plan[:2000]}\n\n"
-                f"## Your Tasks\n{tasks_content}\n\n"
+                f"## Phase {phase_num} Tasks\n{tasks_content}\n\n"
                 "## Instructions\n"
                 f"0a. CHECK SHARED LIBS FIRST: run `list_tree` on `{shared_libs_path}`.\n"
                 "    If any existing library is relevant, read and reuse it — don't reimplement.\n"

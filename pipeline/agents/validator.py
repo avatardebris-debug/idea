@@ -309,15 +309,19 @@ class ValidatorAgent(AgentProcess):
             except Exception as e:
                 logger.warning("[validator] auto_install_workspace_deps error: %s", e)
 
-        # Read task list for acceptance criteria
-        tasks_content = self.read_state_file(tasks_path)
+        # Read task list for acceptance criteria — ONLY for the current phase.
+        # Some tasks.md files contain all phases; we must scope to the active one.
+        raw_tasks = self.read_state_file(tasks_path)
+        tasks_content = self._extract_phase_tasks(raw_tasks, phase_num)
 
         task_prompt = (
-            f"You are validating Phase {phase_num} code output.\n\n"
+            f"You are validating Phase {phase_num} code output.\n"
+            f"IMPORTANT: You are ONLY validating Phase {phase_num}. "
+            f"Ignore any tasks or acceptance criteria from other phases.\n\n"
             f"## Workspace\n"
             f"All code is in: {workspace_path}\n"
             f"Files written: {', '.join(files_written) if files_written else '(check workspace)'}\n\n"
-            f"## Task List (for acceptance criteria)\n{tasks_content}\n\n"
+            f"## Phase {phase_num} Task List (for acceptance criteria)\n{tasks_content}\n\n"
             f"## Your Job\n"
             f"NOTE: Dependencies and a conftest.py (sys.path fix) have already been set up.\n"
             f"If imports still fail, run: `pip install -e {workspace_path}` then retry.\n\n"
