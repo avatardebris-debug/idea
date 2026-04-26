@@ -37,11 +37,15 @@ class IdeaPlannerAgent(AgentProcess):
             f"## Idea\n**{idea_title}**\n\n{idea_description}\n\n"
             f"## Instructions\n"
             f"1. Analyze the idea and identify the core deliverable.\n"
-            f"2. Break it into 3-6 phases. Phase 1 must be the smallest useful thing.\n"
+            f"2. Break it into exactly 3 phases by default. Phase 1 must be the smallest\n"
+            f"   useful thing (MVP). Only use 4-6 phases if the idea genuinely requires it\n"
+            f"   (e.g. multiple distinct subsystems that can't ship together).\n"
             f"3. Write the master plan to `{master_plan_path}`.\n"
             f"4. Each phase needs: description, deliverable, dependencies, success criteria.\n"
-            f"5. Include architecture notes and risks.\n"
-            f"6. Say DONE.\n"
+            f"5. Each phase should have 3-6 tasks max. If you need more, split into\n"
+            f"   additional phases instead of cramming tasks into one phase.\n"
+            f"6. Include architecture notes and risks.\n"
+            f"7. Say DONE.\n"
         )
 
         result = self.call_agent(task=task_prompt, verbose=False)
