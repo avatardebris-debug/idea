@@ -344,6 +344,7 @@ class AgentProcess:
             num_ctx=self.num_ctx,
             system_prompt_addon=system_prompt_addon,
             verbose=verbose,
+            pipeline_mode=True,  # skip repo file tree + shared .agent/ memory
         )
 
     # --- Helper: read/write per-idea project state files ---

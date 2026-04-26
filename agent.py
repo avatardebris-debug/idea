@@ -56,7 +56,47 @@ def bootstrap_agent_dir() -> None:
 # System prompt builder
 # ---------------------------------------------------------------------------
 
-def build_system_prompt(affirmation: AffirmationSystem | None = None) -> str:
+def build_system_prompt(affirmation: AffirmationSystem | None = None,
+                       pipeline_mode: bool = False) -> str:
+    """Build the system prompt for the agent.
+
+    Args:
+        pipeline_mode: If True, skip the workspace file tree, shared .agent/
+            memory, and plan/task files.  Pipeline agents get their own
+            per-project context injected via build_context() — the repo-wide
+            file tree just wastes tokens and confuses the LLM.
+    """
+    # Build constitution governance section (always included)
+    constitution_prompt = ""
+    try:
+        from governance import load_constitution
+        const = load_constitution()
+        rules = []
+        for k, v in const.get("negative_imperatives", {}).items():
+            desc = v.get("description", "") if isinstance(v, dict) else str(v)
+            if desc:
+                rules.append(f"- NEVER: {desc.strip()}")
+        for perm in const.get("permissions", {}).get("deny", []):
+            rules.append(f"- BLOCKED: {perm}")
+        if rules:
+            constitution_prompt = "\n## Governance Rules (from constitution)\n" + "\n".join(rules)
+    except Exception:
+        pass
+
+    if pipeline_mode:
+        # Minimal prompt — pipeline agents get context from their own prompts
+        return textwrap.dedent(f"""
+            You are an autonomous AI agent that works by reading and writing files.
+
+            ## Rules
+            1. Think step by step before acting.
+            2. Use `list_tree` to explore directories before reading files.
+            3. When you are finished, say "DONE" and summarise what you accomplished.
+            4. Do NOT fabricate file contents — always read files before editing them.
+            {constitution_prompt}
+        """).strip()
+
+    # Full prompt for standalone agent usage
     tree = list_tree(".")
 
     try:
@@ -73,28 +113,6 @@ def build_system_prompt(affirmation: AffirmationSystem | None = None) -> str:
         plan = read_file(str(AGENT_DIR / "plan.md"))
     except Exception:
         plan = "(none)"
-
-    # Reflection insights section — disabled (reflection module archived)
-    reflection_prompt = ""
-
-    # Build constitution governance section
-    constitution_prompt = ""
-    try:
-        from governance import load_constitution
-        const = load_constitution()
-        rules = []
-        # Pull negative imperatives as hard rules
-        for k, v in const.get("negative_imperatives", {}).items():
-            desc = v.get("description", "") if isinstance(v, dict) else str(v)
-            if desc:
-                rules.append(f"- NEVER: {desc.strip()}")
-        # Pull permissions deny list
-        for perm in const.get("permissions", {}).get("deny", []):
-            rules.append(f"- BLOCKED: {perm}")
-        if rules:
-            constitution_prompt = "\n## Governance Rules (from constitution)\n" + "\n".join(rules)
-    except Exception:
-        pass
 
     return textwrap.dedent(f"""
         You are an autonomous AI agent that works by reading and writing files.
@@ -121,7 +139,6 @@ def build_system_prompt(affirmation: AffirmationSystem | None = None) -> str:
         7. When you are finished, say "DONE" and summarise what you accomplished.
         8. Do NOT fabricate file contents — always read files before editing them.
         {constitution_prompt}
-        {reflection_prompt}
     """).strip()
 
 
@@ -190,6 +207,7 @@ def run_agent(
     num_ctx: int = 16384,
     system_prompt_addon: str = "",
     verbose: bool = True,
+    pipeline_mode: bool = False,
 ) -> AgentResult:
     bootstrap_agent_dir()
     llm = get_llm(provider, model, temperature=temperature, think=think, num_ctx=num_ctx)
@@ -206,12 +224,13 @@ def run_agent(
             f"Governance: {gov_source}  Constitution: {constitution.get('identity', {}).get('name', '?')}",
             "blue")
 
-    # Log the task
-    ts = datetime.now().strftime("%Y-%m-%d %H:%M")
-    with pathlib.Path(".agent/memory/decisions.md").open("a", encoding="utf-8") as f:
-        f.write(f"\n\n## Task received — {ts}\n{task}")
+    # Log the task (skip in pipeline mode to avoid contaminating shared log)
+    if not pipeline_mode:
+        ts = datetime.now().strftime("%Y-%m-%d %H:%M")
+        with pathlib.Path(".agent/memory/decisions.md").open("a", encoding="utf-8") as f:
+            f.write(f"\n\n## Task received — {ts}\n{task}")
 
-    system_prompt = build_system_prompt(affirmation)
+    system_prompt = build_system_prompt(affirmation, pipeline_mode=pipeline_mode)
     if system_prompt_addon:
         system_prompt += f"\n\n## Custom Profile Instructions\n{system_prompt_addon}"
 

@@ -168,8 +168,10 @@ class ManagerAgent(AgentProcess):
                 self._mark_idea_complete()
                 outgoing.extend(self._start_next_idea())
 
-        # Only trigger Ideator when phase passes (not during emergency rework)
-        if not is_emergency:
+        # Only trigger Ideator on a clean pass — not during rework or fix cycles.
+        # Failed reviews + rework cycles would waste 2 LLM calls (ideator + triage)
+        # on a project that isn't even working yet.
+        if not is_emergency and blocking_bugs == 0:
             outgoing.append(Message.create(
                 from_agent=self.role,
                 to_agent="ideator",
