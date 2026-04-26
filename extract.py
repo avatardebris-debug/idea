@@ -230,6 +230,11 @@ def main() -> None:
         default=None,
         help="Explicit path to .pipeline/ directory (auto-detected if omitted)",
     )
+    parser.add_argument(
+        "--snapshot", "-s",
+        action="store_true",
+        help="Include prompt snapshot, metrics report, and diff from baseline in the zip",
+    )
     args = parser.parse_args()
 
     # Locate pipeline
@@ -254,14 +259,51 @@ def main() -> None:
     out_dir.mkdir(parents=True, exist_ok=True)
 
     label = "workspace only" if args.workspace_only else "full (workspace + phases + state)"
+    if args.snapshot:
+        label += " + audit snapshot"
     print(f"  Extracting   : {label}")
     print(f"  Output dir   : {out_dir}")
     print(f"  Building zip ", end="", flush=True)
 
     zip_path, count = build_zip(pipeline_dir, out_dir, args.workspace_only)
 
+    # Inject audit snapshot into the zip
+    if args.snapshot:
+        import shutil
+        with zipfile.ZipFile(zip_path, "a", zipfile.ZIP_DEFLATED) as zf:
+            # Include current prompt files
+            prompts_dir = pipeline_dir.parent / "pipeline" / "prompts"
+            if prompts_dir.exists():
+                for f in sorted(prompts_dir.glob("*.md")):
+                    zf.write(f, f"_audit/prompts/{f.name}")
+
+            # Include constitution
+            const = pipeline_dir.parent / "constitution.yaml"
+            if const.exists():
+                zf.write(const, "_audit/prompts/constitution.yaml")
+
+            # Include prompt version metadata + diff from baseline
+            versions_dir = pipeline_dir / "prompt_versions"
+            if versions_dir.exists():
+                # Find latest version
+                versions = sorted(p for p in versions_dir.iterdir() if p.is_dir() and p.name.startswith("v"))
+                if versions:
+                    latest = versions[-1]
+                    for f in latest.iterdir():
+                        zf.write(f, f"_audit/prompt_version/{f.name}")
+
+            # Include latest metrics report
+            metrics_dir = pipeline_dir / "metrics"
+            if metrics_dir.exists():
+                runs = sorted(p for p in metrics_dir.iterdir() if p.is_dir())
+                if runs:
+                    latest_run = runs[-1]
+                    for f in latest_run.iterdir():
+                        zf.write(f, f"_audit/metrics/{f.name}")
+
     print(f"done.")
-    print(f"\n  ✅  {zip_path.name}")
+    snapshot_note = " (with audit snapshot)" if args.snapshot else ""
+    print(f"\n  ✅  {zip_path.name}{snapshot_note}")
     print(f"      {count:,} files  |  {zip_path.stat().st_size / 1024 / 1024:.1f} MB\n")
 
 

@@ -36,6 +36,7 @@ PROJECT_ROOT = pathlib.Path(__file__).parent.parent
 sys.path.insert(0, str(PROJECT_ROOT))
 
 from pipeline.message_bus import MessageBus, Message
+from pipeline.metrics import RunMetrics
 
 # Anchor PIPELINE_DIR to where this script lives (project root), not cwd.
 # This prevents /workspace/.pipeline vs /.pipeline splits when the user
@@ -520,6 +521,10 @@ def run_pipeline(
         "current_idea": idea or "(from list)",
     })
 
+    # Start metrics collection
+    run_metrics = RunMetrics.start(provider=provider, model=model)
+    print(f"  Prompts:  {run_metrics.prompt_version}")
+
     # Start all agents
     print(f"\n  Starting agents...")
     supervisor = AgentSupervisor(provider, model)
@@ -621,6 +626,37 @@ def run_pipeline(
                             print(f"\n  ✓ All ideas processed — pipeline complete.")
                             break
 
+                # --- Collect per-project metrics from state files ---
+                try:
+                    projects_dir = PIPELINE_DIR / "projects"
+                    if projects_dir.exists():
+                        for proj_dir in projects_dir.iterdir():
+                            if not proj_dir.is_dir():
+                                continue
+                            slug = proj_dir.name
+                            ci_path = proj_dir / "state" / "current_idea.json"
+                            if ci_path.exists():
+                                ci = json.loads(ci_path.read_text(encoding="utf-8"))
+                                run_metrics.record_project_start(slug)
+                                st = ci.get("status", "")
+                                if st == "completed":
+                                    # Read retry counts from phase_retries.json
+                                    retries = 0
+                                    pr_path = proj_dir / "state" / "phase_retries.json"
+                                    if pr_path.exists():
+                                        try:
+                                            pr_data = json.loads(pr_path.read_text(encoding="utf-8"))
+                                            retries = sum(v for v in pr_data.values() if isinstance(v, int))
+                                        except Exception:
+                                            pass
+                                    run_metrics.record_project_complete(
+                                        slug,
+                                        phases=ci.get("phase", 0),
+                                        retries=retries,
+                                    )
+                except Exception:
+                    pass  # metrics are best-effort, never crash the runner
+
                 last_health_check = time.time()
 
             time.sleep(2)
@@ -637,6 +673,14 @@ def run_pipeline(
             "model": model,
         })
 
+        # Finalize and save metrics report
+        try:
+            metrics_path = run_metrics.finish()
+            metrics_report = metrics_path.parent / "report.md"
+        except Exception as e:
+            metrics_report = None
+            print(f"  ⚠ Metrics save failed: {e}")
+
         signal.signal(signal.SIGINT, original_sigint)
 
         print("\n" + "=" * 60)
@@ -644,6 +688,9 @@ def run_pipeline(
         print(f"  Logs: .pipeline/logs/")
         print(f"  Output: .pipeline/workspace/")
         print(f"  Decisions: .pipeline/state/manager_decisions.md")
+        if metrics_report and metrics_report.exists():
+            print(f"  Run Report: {metrics_report.relative_to(PROJECT_ROOT)}")
+            print(f"  Prompt Ver: {run_metrics.prompt_version}")
         print("=" * 60)
 
 

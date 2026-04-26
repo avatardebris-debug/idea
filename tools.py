@@ -135,6 +135,64 @@ def log_decision(decision: str) -> str:
     return append_file(".agent/memory/decisions.md", entry)
 
 
+def search_in_files(pattern: str, path: str = ".", file_glob: str = "*.py") -> str:
+    """Search for a text pattern across files using grep.
+
+    Returns matching lines with file:line context (max 4000 chars).
+    Much faster than reading every file sequentially.
+    """
+    try:
+        result = subprocess.run(
+            ["grep", "-rn", "--include", file_glob, pattern, path],
+            capture_output=True, text=True, timeout=30,
+        )
+        out = result.stdout
+        if len(out) > 4000:
+            out = out[:4000] + "\n...(truncated)"
+        return out or "(no matches)"
+    except FileNotFoundError:
+        # grep not available (Windows without Git Bash) — fall back to Python
+        matches = []
+        import fnmatch
+        root = pathlib.Path(path)
+        for fp in root.rglob(file_glob):
+            if fp.is_file():
+                try:
+                    for i, line in enumerate(fp.read_text(encoding="utf-8", errors="ignore").splitlines(), 1):
+                        if pattern in line:
+                            matches.append(f"{fp}:{i}: {line.strip()}")
+                except Exception:
+                    continue
+        out = "\n".join(matches[:100])
+        if len(out) > 4000:
+            out = out[:4000] + "\n...(truncated)"
+        return out or "(no matches)"
+    except subprocess.TimeoutExpired:
+        return "ERROR: search timed out after 30s"
+    except Exception as e:
+        return f"ERROR: {e}"
+
+
+def patch_file(path: str, old: str, new: str) -> str:
+    """Replace the first occurrence of `old` with `new` in a file.
+
+    This is safer than write_file for small edits — it won't truncate
+    the rest of the file. Returns an error if `old` is not found.
+    """
+    p = pathlib.Path(path)
+    if not p.exists():
+        return f"ERROR: File not found: {path}"
+    try:
+        content = p.read_text(encoding="utf-8")
+        if old not in content:
+            return f"ERROR: pattern not found in {path}"
+        updated = content.replace(old, new, 1)
+        p.write_text(updated, encoding="utf-8")
+        return f"OK: Patched {path} ({len(old)} chars → {len(new)} chars)"
+    except Exception as e:
+        return f"ERROR patching {path}: {e}"
+
+
 # ---------------------------------------------------------------------------
 # Tool schemas (JSON Schema format — works with OpenAI & Claude)
 # ---------------------------------------------------------------------------
@@ -241,6 +299,32 @@ TOOL_SCHEMAS = [
             "required": ["decision"],
         },
     },
+    {
+        "name": "search_in_files",
+        "description": "Search for a text pattern across files (like grep). Returns matching lines with file:line context.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "pattern": {"type": "string", "description": "Text to search for."},
+                "path": {"type": "string", "description": "Directory to search in. Defaults to '.'.", "default": "."},
+                "file_glob": {"type": "string", "description": "File pattern to include (e.g. '*.py', '*.md'). Defaults to '*.py'.", "default": "*.py"},
+            },
+            "required": ["pattern"],
+        },
+    },
+    {
+        "name": "patch_file",
+        "description": "Replace the first occurrence of 'old' text with 'new' text in a file. Safer than write_file for small edits — won't truncate the rest of the file.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "path": {"type": "string", "description": "Path to the file to patch."},
+                "old": {"type": "string", "description": "Exact text to find and replace (first occurrence only)."},
+                "new": {"type": "string", "description": "Replacement text."},
+            },
+            "required": ["path", "old", "new"],
+        },
+    },
 ]
 
 # Callable registry — used by the agent executor
@@ -254,4 +338,6 @@ TOOLS: dict[str, callable] = {
     "append_memory": append_memory,
     "update_tasks": update_tasks,
     "log_decision": log_decision,
+    "search_in_files": search_in_files,
+    "patch_file": patch_file,
 }
