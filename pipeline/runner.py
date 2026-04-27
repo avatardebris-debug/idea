@@ -997,28 +997,29 @@ def run_pipeline(
                             idea_state["budget_note"] = f"Force-completed after {_elapsed:.0f} min (budget: {PROJECT_TIME_BUDGET} min)"
                             _proj_file.write_text(json.dumps(idea_state, indent=2), encoding="utf-8")
                             print(f"  💰 Budget exceeded for '{idea_state.get('title', _active_slug)}' ({_elapsed:.0f}m > {PROJECT_TIME_BUDGET}m) — skipping")
-                            # Immediately clear in-flight messages so has_active_work()
-                            # returns False next tick and the pipeline can advance.
-                            bus.reset_stale_processing()
+                            # Clear ALL queue messages (pending + processing) so the
+                            # pipeline can immediately advance to the next project.
+                            # reset_stale_processing() only handles 'processing';
+                            # we also need to drop any 'pending' messages.
+                            cleared = 0
+                            for _role in AGENT_ROLES:
+                                cleared += bus.clear_queue(_role)
+                            if cleared:
+                                print(f"  🧹 Cleared {cleared} queued message(s) for budget-exceeded project")
                     except Exception:
                         pass
 
-                # If active project just hit budget_exceeded, clear its queue
-                # messages so has_active_work() returns False and the pipeline
-                # can immediately advance to the next project.
-                if idea_state.get("status") == "budget_exceeded" and all_empty:
-                    stale_reset = bus.reset_stale_processing()
-                    if stale_reset:
-                        print(f"  🧹 Cleared {stale_reset} in-flight message(s) for budget-exceeded project")
-                    # Immediately try to pick up next project
-                    if not bus.has_active_work():
-                        orphaned = _rebuild_queues_from_state(bus)
-                        if orphaned:
-                            print(f"  ▶️  Advancing to next project ({orphaned} queued)")
-                        elif from_list:
-                            seeded = seed_from_master_list(bus)
-                            if not seeded:
-                                print(f"  ✓ All projects exhausted.")
+                # If active project is budget_exceeded, advance to next project.
+                # Check has_active_work() not all_empty — all_empty only counts
+                # 'pending' but we just cleared all queues above.
+                if idea_state.get("status") == "budget_exceeded" and not bus.has_active_work():
+                    orphaned = _rebuild_queues_from_state(bus)
+                    if orphaned:
+                        print(f"  ▶️  Advancing to next project ({orphaned} queued)")
+                    elif from_list:
+                        seeded = seed_from_master_list(bus)
+                        if not seeded:
+                            print(f"  ✓ All projects exhausted.")
 
                 running_agents = sum(1 for s in health.values() if s == "running")
 
