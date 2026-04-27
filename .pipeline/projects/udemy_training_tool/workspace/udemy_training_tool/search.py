@@ -41,7 +41,7 @@ def search_courses(
 
         # Filter matching
         if not course.matches_filters(
-            min_rating=min_rating,
+            min_rating=min_rating if min_rating is not None else 0,
             max_price=max_price,
             level=level,
             category=category,

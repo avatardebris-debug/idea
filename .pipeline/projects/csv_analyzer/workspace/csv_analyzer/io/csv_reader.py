@@ -1,54 +1,76 @@
-"""CsvReader — reads CSV files into pandas DataFrames with configurable options."""
+"""CsvReader — reads CSV files into pandas DataFrames with flexible options."""
 
 from __future__ import annotations
 
-import os
-from pathlib import Path
-
 import pandas as pd
+from pathlib import Path
+from typing import Any
 
 
 class CsvReader:
-    """Read CSV files with configurable delimiter, encoding, and header handling.
+    """Read CSV files into pandas DataFrames.
 
     Parameters
     ----------
     delimiter : str, optional
-        Character used to separate fields. Defaults to ','.
+        Delimiter to use for parsing. Default is ','.
     encoding : str, optional
-        File encoding. Defaults to 'utf-8'.
-    header : int | list[int] | None, optional
-        Row number(s) to use as column names. None means no header.
-    dtype : dict[str, type] | type, optional
-        Data types for columns or all columns.
-    usecols : list[str] | None, optional
+        File encoding. Default is 'utf-8'.
+    header : int, optional
+        Row number to use as column names. Default is 0.
+    names : list, optional
+        Column names to use. Required if header=None.
+    usecols : list, optional
         Columns to read.
-    na_values : list[str] | None, optional
+    na_values : list, optional
         Additional strings to recognize as NA/NaN.
+    dtype : dict, optional
+        Data types for columns.
     """
 
     def __init__(
         self,
         delimiter: str = ",",
         encoding: str = "utf-8",
-        header: int | list[int] | None = 0,
-        dtype: dict[str, type] | type | None = None,
+        header: int = 0,
+        names: list[str] | None = None,
         usecols: list[str] | None = None,
         na_values: list[str] | None = None,
+        dtype: dict[str, str] | None = None,
     ) -> None:
-        self.delimiter = delimiter
-        self.encoding = encoding
-        self.header = header
-        self.dtype = dtype
-        self.usecols = usecols
-        self.na_values = na_values
-
-    def read(self, filepath: str | Path) -> pd.DataFrame:
-        """Read a CSV file and return a DataFrame.
+        """Initialize the CsvReader with parsing options.
 
         Parameters
         ----------
-        filepath : str or Path
+        delimiter : str, optional
+            Delimiter to use for parsing. Default is ','.
+        encoding : str, optional
+            File encoding. Default is 'utf-8'.
+        header : int, optional
+            Row number to use as column names. Default is 0.
+        names : list, optional
+            Column names to use. Required if header=None.
+        usecols : list, optional
+            Columns to read.
+        na_values : list, optional
+            Additional strings to recognize as NA/NaN.
+        dtype : dict, optional
+            Data types for columns.
+        """
+        self.delimiter = delimiter
+        self.encoding = encoding
+        self.header = header
+        self.names = names
+        self.usecols = usecols
+        self.na_values = na_values
+        self.dtype = dtype
+
+    def read(self, filepath: str | Path) -> pd.DataFrame:
+        """Read a CSV file into a DataFrame.
+
+        Parameters
+        ----------
+        filepath : str | Path
             Path to the CSV file.
 
         Returns
@@ -57,64 +79,86 @@ class CsvReader:
             The parsed DataFrame.
 
         Raises
-        ------
-        ValueError
-            If the file does not exist or is not a file.
+        -------
         FileNotFoundError
-            If the file cannot be found.
-        pd.errors.EmptyDataError
-            If the file is empty.
+            If the file does not exist.
+        ValueError
+            If the path is not a file or is empty.
         """
         path = Path(filepath)
 
+        # Check if file exists
         if not path.exists():
             raise FileNotFoundError(f"CSV file not found: {filepath}")
 
+        # Check if path is a file
         if not path.is_file():
             raise ValueError(f"Path is not a file: {filepath}")
 
-        if path.stat().st_size == 0:
-            raise pd.errors.EmptyDataError("The CSV file is empty")
+        # Read the file
+        try:
+            df = pd.read_csv(
+                path,
+                delimiter=self.delimiter,
+                encoding=self.encoding,
+                header=self.header,
+                names=self.names,
+                usecols=self.usecols,
+                na_values=self.na_values,
+                dtype=self.dtype,
+            )
+            return df
+        except pd.errors.EmptyDataError:
+            # Handle empty files
+            return pd.DataFrame()
+        except pd.errors.ParserError as e:
+            raise ValueError(f"Failed to parse CSV file: {e}")
 
-        kwargs: dict = {
-            "sep": self.delimiter,
-            "encoding": self.encoding,
-            "header": self.header,
-            "dtype": self.dtype,
-            "usecols": self.usecols,
-            "na_values": self.na_values,
-        }
-
-        # Remove None values so pandas uses its defaults
-        kwargs = {k: v for k, v in kwargs.items() if v is not None}
-
-        return pd.read_csv(path, **kwargs)
-
-    @classmethod
-    def read_with_type_inference(
-        cls,
-        filepath: str | Path,
-        delimiter: str = ",",
-        encoding: str = "utf-8",
-    ) -> pd.DataFrame:
-        """Read a CSV file letting pandas infer types automatically.
-
-        This is a convenience method that uses the default CsvReader settings
-        which enable pandas' automatic type inference.
+    def read_batch(self, filepaths: list[str | Path]) -> list[pd.DataFrame]:
+        """Read multiple CSV files into a list of DataFrames.
 
         Parameters
         ----------
-        filepath : str or Path
+        filepaths : list[str | Path]
+            List of paths to CSV files.
+
+        Returns
+        -------
+        list[pd.DataFrame]
+            List of parsed DataFrames.
+        """
+        return [self.read(fp) for fp in filepaths]
+
+    def read_chunked(
+        self,
+        filepath: str | Path,
+        chunksize: int = 10000,
+    ) -> pd.DataFrame:
+        """Read a CSV file in chunks.
+
+        Parameters
+        ----------
+        filepath : str | Path
             Path to the CSV file.
-        delimiter : str, optional
-            Field separator. Defaults to ','.
-        encoding : str, optional
-            File encoding. Defaults to 'utf-8'.
+        chunksize : int, optional
+            Number of rows per chunk. Default is 10000.
 
         Returns
         -------
         pd.DataFrame
-            The parsed DataFrame with inferred types.
+            The complete DataFrame (chunks concatenated).
         """
-        reader = cls(delimiter=delimiter, encoding=encoding)
-        return reader.read(filepath)
+        chunks = pd.read_csv(
+            filepath,
+            delimiter=self.delimiter,
+            encoding=self.encoding,
+            header=self.header,
+            names=self.names,
+            usecols=self.usecols,
+            na_values=self.na_values,
+            dtype=self.dtype,
+            chunksize=chunksize,
+        )
+
+        # Concatenate all chunks
+        return pd.concat(chunks, ignore_index=True)

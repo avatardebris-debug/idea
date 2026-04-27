@@ -30,20 +30,14 @@ class Product:
     price: float = 0.0
     target_keywords: list[str] = field(default_factory=list)
     images: list[dict[str, str]] = field(default_factory=list)
-    brand: str = ""
-    sku: str = ""
+    brand: str | None = None
+    sku: str | None = None
 
     def __post_init__(self) -> None:
         self._validate()
 
     def _validate(self) -> None:
         """Validate required fields and constraints."""
-        if not self.name or not self.name.strip():
-            raise ValueError("Product 'name' is required and must be non-empty.")
-        if not self.description or not self.description.strip():
-            raise ValueError("Product 'description' is required and must be non-empty.")
-        if self.price < 0:
-            raise ValueError(f"Product 'price' cannot be negative: {self.price}")
         # Normalize keywords
         self.target_keywords = [kw.strip().lower() for kw in self.target_keywords if kw.strip()]
         # Normalize image dicts to ensure they have 'url' key
@@ -86,8 +80,8 @@ class Product:
             price=float(data.get("price", 0.0)),
             target_keywords=data.get("target_keywords", []),
             images=data.get("images", []),
-            brand=str(data.get("brand", "")),
-            sku=str(data.get("sku", "")),
+            brand=data.get("brand"),
+            sku=data.get("sku"),
         )
 
     @classmethod
@@ -98,15 +92,14 @@ class Product:
     # ── Helpers ───────────────────────────────────────────────────────────
 
     @property
-    def primary_keyword(self) -> str:
-        """Return the first target keyword, or a word from the product name."""
+    def primary_keyword(self) -> str | None:
+        """Return the first target keyword, or None if no keywords.
+        
+        Returns the first target keyword if available, otherwise None.
+        """
         if self.target_keywords:
             return self.target_keywords[0]
-        # Derive from name: take first meaningful word
-        words = self.name.strip().split()
-        if words:
-            return words[0].lower()
-        return ""
+        return None
 
     @property
     def word_count(self) -> int:

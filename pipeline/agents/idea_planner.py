@@ -12,6 +12,7 @@ import json
 import pathlib
 import re
 import sys
+from datetime import datetime, timezone
 
 sys.path.insert(0, str(pathlib.Path(__file__).parent.parent.parent))
 
@@ -52,7 +53,6 @@ class IdeaPlannerAgent(AgentProcess):
         master_plan = self.read_state_file("state/master_plan.md")
         phase_1_spec = self._extract_phase(master_plan, 1)
 
-        from datetime import datetime, timezone
 
         # Save current idea state
         self.write_json_state("state/current_idea.json", {

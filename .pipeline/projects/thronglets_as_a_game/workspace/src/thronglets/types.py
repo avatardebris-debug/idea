@@ -60,7 +60,17 @@ class InteractionType(enum.Enum):
     COLLECT = "collect"
     CONFLICT = "conflict"
     COOPERATE = "cooperate"
-    GREET = "greet"
+    GREETING = "greet"
+
+
+class Behavior(enum.Enum):
+    """Behaviors an agent can exhibit."""
+
+    REST = "rest"
+    EXPLORE = "explore"
+    SEEK_FOOD = "seek_food"
+    SEEK_WATER = "seek_water"
+    INTERACT = "interact"
 
 
 @dataclass

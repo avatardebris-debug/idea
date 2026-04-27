@@ -12,10 +12,12 @@ import random
 from dataclasses import dataclass, field
 from typing import List, Optional, Tuple
 
-from core.game import GameEngine, GameState, RoundResult, Outcome
-from core.deck import Deck, Shoe, Card
-from core.hand import Hand, HandType, CardRank, CardSuit
-from core.strategy import BasicStrategy, Action
+from ..core.game import GameState, RoundResult, Game
+from ..core.hand import Outcome
+from ..core.deck import Deck, Shoe, Card
+from ..core.hand import Hand, HandType
+from ..core.deck import Card, Rank
+from ..core.strategy import BasicStrategy, Action
 
 
 @dataclass
@@ -30,7 +32,7 @@ class BlackjackResult(RoundResult):
     payout_multiplier: float = 0.0
 
 
-class BlackjackGame(GameEngine):
+class BlackjackGame(Game):
     """Concrete game engine for blackjack."""
 
     def __init__(

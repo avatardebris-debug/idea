@@ -2,5 +2,7 @@
   "title": "[mobile access to pc]",
   "description": "[Make tool to access pc remotely from apple mobile device or ipad.]",
   "status": "phase_1_executing",
-  "total_phases": 5
+  "total_phases": 5,
+  "tasks_done": 0,
+  "tasks_total": 29
 }

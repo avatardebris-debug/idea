@@ -1,6 +1,6 @@
 """Configuration module for YouTube Workflow Tool.
 
-Loads defaults and reads from YAML/JSON config files.
+Handles configuration loading from files, environment variables, and dictionaries.
 """
 
 from __future__ import annotations
@@ -8,16 +8,13 @@ from __future__ import annotations
 import json
 import os
 from dataclasses import dataclass, field
-from pathlib import Path
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional
 
 
-# ── Default configuration ──────────────────────────────────────────────
-
-DEFAULT_CONFIG: Dict[str, Any] = {
+DEFAULT_CONFIG = {
     "min_tags": 5,
-    "min_hashtags": 3,
     "max_tags": 15,
+    "min_hashtags": 3,
     "max_hashtags": 10,
     "min_title_length": 10,
     "max_title_length": 100,
@@ -25,133 +22,112 @@ DEFAULT_CONFIG: Dict[str, Any] = {
     "default_niche": "general",
     "default_tone": "informative",
     "score_weights": {
-        "title": 0.30,
+        "title": 0.35,
         "description": 0.25,
         "tags": 0.25,
-        "hashtags": 0.20,
+        "hashtags": 0.15,
     },
-    "template_categories": [
-        "tutorial",
-        "review",
-        "vlog",
-        "listicle",
-        "howto",
-        "comparison",
-        "storytelling",
-        "announcement",
-    ],
-    "output_format": "text",
-    "default_output_file": None,
 }
 
 
 @dataclass
 class Config:
-    """Runtime configuration with defaults and file-based overrides."""
+    """Configuration for the YouTube Workflow Tool.
 
-    min_tags: int = DEFAULT_CONFIG["min_tags"]
-    min_hashtags: int = DEFAULT_CONFIG["min_hashtags"]
-    max_tags: int = DEFAULT_CONFIG["max_tags"]
-    max_hashtags: int = DEFAULT_CONFIG["max_hashtags"]
-    min_title_length: int = DEFAULT_CONFIG["min_title_length"]
-    max_title_length: int = DEFAULT_CONFIG["max_title_length"]
-    min_description_length: int = DEFAULT_CONFIG["min_description_length"]
-    default_niche: str = DEFAULT_CONFIG["default_niche"]
-    default_tone: str = DEFAULT_CONFIG["default_tone"]
-    score_weights: Dict[str, float] = field(default_factory=lambda: dict(DEFAULT_CONFIG["score_weights"]))
-    template_categories: list = field(default_factory=lambda: list(DEFAULT_CONFIG["template_categories"]))
-    output_format: str = DEFAULT_CONFIG["output_format"]
-    default_output_file: Optional[str] = DEFAULT_CONFIG["default_output_file"]
+    Attributes:
+        min_tags: Minimum number of tags to generate.
+        max_tags: Maximum number of tags to generate.
+        min_hashtags: Minimum number of hashtags to generate.
+        max_hashtags: Maximum number of hashtags to generate.
+        min_title_length: Minimum title length in characters.
+        max_title_length: Maximum title length in characters.
+        min_description_length: Minimum description length in characters.
+        default_niche: Default content niche.
+        default_tone: Default content tone.
+        score_weights: Weights for metadata scoring components.
+    """
+
+    min_tags: int = 5
+    max_tags: int = 15
+    min_hashtags: int = 3
+    max_hashtags: int = 10
+    min_title_length: int = 10
+    max_title_length: int = 100
+    min_description_length: int = 100
+    default_niche: str = "general"
+    default_tone: str = "informative"
+    score_weights: Dict[str, float] = field(default_factory=lambda: {
+        "title": 0.35,
+        "description": 0.25,
+        "tags": 0.25,
+        "hashtags": 0.15,
+    })
 
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> "Config":
-        """Create a Config from a dictionary, merging with defaults."""
-        merged = dict(DEFAULT_CONFIG)
+        """Create Config from dictionary, preserving defaults for missing keys."""
+        merged = DEFAULT_CONFIG.copy()
         merged.update(data)
         return cls(**merged)
 
     @classmethod
-    def from_yaml_file(cls, path: str) -> "Config":
-        """Load config from a YAML file, merging with defaults."""
-        import yaml
-
-        with open(path, "r", encoding="utf-8") as f:
-            data = yaml.safe_load(f) or {}
-        return cls.from_dict(data)
-
-    @classmethod
-    def from_json_file(cls, path: str) -> "Config":
-        """Load config from a JSON file, merging with defaults."""
-        with open(path, "r", encoding="utf-8") as f:
+    def from_file(cls, filepath: str) -> "Config":
+        """Load Config from JSON file."""
+        with open(filepath, "r") as f:
             data = json.load(f)
         return cls.from_dict(data)
 
     @classmethod
-    def from_file(cls, path: str) -> "Config":
-        """Load config from a file (YAML or JSON), merging with defaults."""
-        p = Path(path)
-        if p.suffix in (".yaml", ".yml"):
-            return cls.from_yaml_file(str(p))
-        elif p.suffix == ".json":
-            return cls.from_json_file(str(p))
-        else:
-            # Try YAML first, then JSON
-            try:
-                return cls.from_yaml_file(str(p))
-            except Exception:
-                return cls.from_json_file(str(p))
-
-    @classmethod
     def from_env(cls) -> "Config":
-        """Load config from environment variables with YW_ prefix."""
-        data: Dict[str, Any] = {}
-        env_mappings = {
-            "YW_MIN_TAGS": "min_tags",
-            "YW_MIN_HASHTAGS": "min_hashtags",
-            "YW_MAX_TAGS": "max_tags",
-            "YW_MAX_HASHTAGS": "max_hashtags",
-            "YW_MIN_TITLE_LENGTH": "min_title_length",
-            "YW_MAX_TITLE_LENGTH": "max_title_length",
-            "YW_MIN_DESCRIPTION_LENGTH": "min_description_length",
-            "YW_DEFAULT_NICHE": "default_niche",
-            "YW_DEFAULT_TONE": "default_tone",
-            "YW_OUTPUT_FORMAT": "output_format",
+        """Load Config from environment variables.
+
+        Environment variables should be prefixed with YW_ (e.g., YW_MIN_TAGS).
+        """
+        env_map = {
+            "min_tags": "YW_MIN_TAGS",
+            "max_tags": "YW_MAX_TAGS",
+            "min_hashtags": "YW_MIN_HASHTAGS",
+            "max_hashtags": "YW_MAX_HASHTAGS",
+            "min_title_length": "YW_MIN_TITLE_LENGTH",
+            "max_title_length": "YW_MAX_TITLE_LENGTH",
+            "min_description_length": "YW_MIN_DESCRIPTION_LENGTH",
+            "default_niche": "YW_DEFAULT_NICHE",
+            "default_tone": "YW_DEFAULT_TONE",
         }
-        for env_key, config_key in env_mappings.items():
-            val = os.environ.get(env_key)
-            if val is not None:
-                if config_key in ("min_tags", "max_tags", "min_hashtags", "max_hashtags", "min_title_length", "max_title_length", "min_description_length"):
-                    data[config_key] = int(val)
+
+        data: Dict[str, Any] = {}
+        for key, env_var in env_map.items():
+            value = os.getenv(env_var)
+            if value is not None:
+                if key in ["min_tags", "max_tags", "min_hashtags", "max_hashtags",
+                          "min_title_length", "max_title_length", "min_description_length"]:
+                    data[key] = int(value)
                 else:
-                    data[config_key] = val
+                    data[key] = value
+
         return cls.from_dict(data)
 
     @classmethod
-    def load(cls, path: Optional[str] = None) -> "Config":
-        """Load config: try file path → env vars → defaults."""
-        if path is not None:
-            p = Path(path)
-            if p.suffix in (".yaml", ".yml"):
-                return cls.from_yaml_file(str(p))
-            elif p.suffix == ".json":
-                return cls.from_json_file(str(p))
-            else:
-                # Try YAML first, then JSON
-                try:
-                    return cls.from_yaml_file(str(p))
-                except Exception:
-                    return cls.from_json_file(str(p))
-        # Try environment variables
-        if any(k.startswith("YW_") for k in os.environ):
-            return cls.from_env()
-        return cls()
+    def load(cls, filepath: Optional[str] = None) -> "Config":
+        """Load Config from file or environment.
+
+        Args:
+            filepath: Optional path to JSON config file. If not provided,
+                     loads from environment variables.
+
+        Returns:
+            Config instance.
+        """
+        if filepath:
+            return cls.from_file(filepath)
+        return cls.from_env()
 
     def to_dict(self) -> Dict[str, Any]:
-        """Serialize config to dictionary."""
+        """Convert Config to dictionary."""
         return {
             "min_tags": self.min_tags,
-            "min_hashtags": self.min_hashtags,
             "max_tags": self.max_tags,
+            "min_hashtags": self.min_hashtags,
             "max_hashtags": self.max_hashtags,
             "min_title_length": self.min_title_length,
             "max_title_length": self.max_title_length,
@@ -159,7 +135,9 @@ class Config:
             "default_niche": self.default_niche,
             "default_tone": self.default_tone,
             "score_weights": self.score_weights,
-            "template_categories": self.template_categories,
-            "output_format": self.output_format,
-            "default_output_file": self.default_output_file,
         }
+
+    def save(self, filepath: str) -> None:
+        """Save Config to JSON file."""
+        with open(filepath, "w") as f:
+            json.dump(self.to_dict(), f, indent=2)

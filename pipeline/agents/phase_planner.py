@@ -81,14 +81,8 @@ class PhasePlannerAgent(AgentProcess):
                     "[phase_planner] Phase %d has %d tasks (limit %d) — truncating",
                     phase_num, len(task_indices), MAX_TASKS_PER_PHASE,
                 )
-                # Keep everything up to the end of the last allowed task
-                # (which starts at task_indices[MAX_TASKS_PER_PHASE-1])
-                # The task block ends at the line before the next task, or EOF
-                last_keep = task_indices[MAX_TASKS_PER_PHASE - 1]
-                if len(task_indices) > MAX_TASKS_PER_PHASE:
-                    cut_at = task_indices[MAX_TASKS_PER_PHASE]
-                else:
-                    cut_at = len(lines)
+                # Keep everything up to where the next excess task starts
+                cut_at = task_indices[MAX_TASKS_PER_PHASE]
 
                 truncated = "\n".join(lines[:cut_at])
                 truncated += f"\n\n<!-- {len(task_indices) - MAX_TASKS_PER_PHASE} tasks removed by guardrail (max {MAX_TASKS_PER_PHASE} per phase) -->\n"

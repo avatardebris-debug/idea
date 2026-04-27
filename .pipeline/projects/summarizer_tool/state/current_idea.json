@@ -1,0 +1,6 @@
+{
+  "title": "[summarizer tool]",
+  "description": "[from a dashboard use an llm to summarize uploaded pdfs, youtube links, websites, blogs. user share links or download files and click summarize, or prompt agent what is needed from source material. Then agent uses tools/functions to access the sources, extracts, summaries, and presents.]",
+  "status": "phase_1_executing",
+  "total_phases": 1
+}

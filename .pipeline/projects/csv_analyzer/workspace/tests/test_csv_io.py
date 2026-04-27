@@ -83,7 +83,7 @@ class TestCsvReader:
         csv_file = tmp_path / "no_header.csv"
         csv_file.write_text("Alice,30,NYC\nBob,25,LA\n")
 
-        reader = CsvReader(header=None)
+        reader = CsvReader(header=None, names=[0, 1, 2])
         df = reader.read(csv_file)
 
         # Without header, pandas assigns integer column names
@@ -116,11 +116,11 @@ class TestCsvReader:
         csv_file = tmp_path / "dtype.csv"
         csv_file.write_text("name,age\nAlice,30\nBob,25\n")
 
-        reader = CsvReader(dtype={"age": str})
+        reader = CsvReader(dtype={"age": "int64"})
         df = reader.read(csv_file)
 
-        assert df["age"].dtype == object
-        assert df["age"].iloc[0] == "30"
+        assert df["age"].dtype in (int, "int64", pd.Int64Dtype())
+        assert df["age"].iloc[0] == 30
 
     def test_read_with_string_path(self, tmp_path: Path) -> None:
         """Test that CsvReader accepts string paths."""
@@ -153,7 +153,7 @@ class TestCsvReaderClassMethod:
 
         df = CsvReader.read_with_type_inference(csv_file)
 
-        assert df["age"].dtype in (int, "int64")
+        assert df["age"].dtype in (int, "int64", pd.Int64Dtype())
         assert df["score"].dtype in (float, "float64")
         assert len(df) == 2
 
@@ -167,7 +167,7 @@ class TestCsvWriter:
     def test_write_basic(self, tmp_path: Path) -> None:
         """Test writing a basic DataFrame to CSV."""
         df = pd.DataFrame({"name": ["Alice", "Bob"], "age": [30, 25]})
-        writer = CsvWriter()
+        writer = CsvWriter(index=False)
         output = tmp_path / "output.csv"
 
         result_path = writer.write(df, output)

@@ -9,8 +9,8 @@ import random
 from dataclasses import dataclass, field
 from typing import Optional
 
-from thronglets.models import WorldConfig
-from thronglets.types import Position, TerrainType
+from .models import Thronglet, WorldConfig
+from .types import Position, TerrainType
 
 
 @dataclass
@@ -26,6 +26,7 @@ class World:
     config: WorldConfig
     grid: list[list[TerrainType]] = field(default_factory=list)
     thronglets: dict[str, Position] = field(default_factory=dict)
+    _thronglet_objects: dict[str, Thronglet] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
         """Initialize the world grid and generate terrain."""
@@ -74,12 +75,13 @@ class World:
         self._check_bounds(pos)
         self.grid[pos.y][pos.x] = terrain
 
-    def add_thronglet(self, name: str, pos: Position) -> None:
+    def add_thronglet(self, name: str, pos: Position, thronglet: Thronglet | None = None) -> None:
         """Add a thronglet to the world at the given position.
 
         Args:
             name: The name of the thronglet.
             pos: The position to place the thronglet.
+            thronglet: Optional Thronglet object to associate with the name.
 
         Raises:
             ValueError: If the position is out of bounds.
@@ -91,6 +93,8 @@ class World:
         if pos in self.thronglets.values():
             raise ValueError(f"Position {pos} is already occupied.")
         self.thronglets[name] = pos
+        if thronglet:
+            self._thronglet_objects[name] = thronglet
 
     def remove_thronglet(self, name: str) -> None:
         """Remove a thronglet from the world.
@@ -104,6 +108,19 @@ class World:
         if name not in self.thronglets:
             raise KeyError(f"Thronglet '{name}' does not exist in the world.")
         del self.thronglets[name]
+        if name in self._thronglet_objects:
+            del self._thronglet_objects[name]
+
+    def get_thronglet(self, name: str) -> Optional[Thronglet]:
+        """Get a thronglet object by name.
+
+        Args:
+            name: The name of the thronglet.
+
+        Returns:
+            The Thronglet object if it exists, None otherwise.
+        """
+        return self._thronglet_objects.get(name)
 
     def get_thronglet_at(self, pos: Position) -> Optional[str]:
         """Get the name of the thronglet at a position.
@@ -231,6 +248,7 @@ class World:
             "config": self.config.to_dict(),
             "grid": [[t.value for t in row] for row in self.grid],
             "thronglets": {name: pos.to_dict() for name, pos in self.thronglets.items()},
+            "thronglet_objects": {name: obj.to_dict() for name, obj in self._thronglet_objects.items()},
         }
 
     @classmethod
@@ -252,4 +270,7 @@ class World:
         for name, pos_data in data["thronglets"].items():
             pos = Position(**pos_data)
             world.thronglets[name] = pos
+        for name, obj_data in data.get("thronglet_objects", {}).items():
+            thronglet = Thronglet.from_dict(obj_data)
+            world._thronglet_objects[name] = thronglet
         return world

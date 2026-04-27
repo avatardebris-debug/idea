@@ -1,798 +1,645 @@
 /**
- * Thronglets VR Practice Mode — Main Application
- *
- * Loads vr_config.json, builds the A-Frame scene, creates thronglet avatars,
- * handles VR camera rig with teleportation, and runs all animations.
- *
- * Task 1: Point-and-look interaction — raycaster hover, detail panel, proximity alerts
+ * Thronglets VR Practice Mode
+ * Interactive 3D visualization and simulation environment
+ * 
+ * @author Thronglets Development Team
+ * @version 1.0.0
  */
 
-(function () {
-  'use strict';
+// Global state management
+const VRState = {
+  thronglets: [],
+  connections: [],
+  selectedThronglet: null,
+  config: null,
+  settings: {
+    showNameplates: true,
+    showConnections: true,
+    showHealthHalos: true,
+    debugMode: false
+  },
+  proximityAlerts: [],
+  lastUpdate: Date.now()
+};
 
-  // ─── Configuration ────────────────────────────────────────────────────────
+/**
+ * Thronglet class representing a single entity in the simulation
+ */
+class Thronglet {
+  constructor(data) {
+    this.id = data.id;
+    this.name = data.name;
+    this.role = data.role;
+    this.color = data.color;
+    this.position = { ...data.position };
+    this.health = data.health;
+    this.mood = data.mood;
+    this.tokenCount = data.token_count;
+    this.uptime = data.uptime;
+    this.lastSeen = data.last_seen;
+    this.mesh = null;
+    this.halo = null;
+    this.nameplate = null;
+    this.updateTimestamp();
+  }
 
-  let CONFIG = null;
-  let THRONGLET_ENTITIES = {};
-  let CONNECTION_LINES = [];
-  let ANIMATION_FRAME = null;
-  let LAST_TIME = 0;
+  updateTimestamp() {
+    this.lastSeen = new Date().toISOString();
+  }
 
-  // ─── Interaction State ───────────────────────────────────────────────────
+  getHealthColor() {
+    const colors = {
+      healthy: '#81c784',
+      warning: '#ffb74d',
+      critical: '#e57373'
+    };
+    return colors[this.health] || '#ffffff';
+  }
 
-  let hoveredThrongletId = null;
-  let selectedThrongletId = null;
-  let proximityAlertActive = false;
-  let proximityAlertThrongletId = null;
-  let lastProximityAlertTime = 0;
-  const PROXIMITY_ALERT_COOLDOWN = 5000; // ms
-  const PROXIMITY_CRITICAL_DISTANCE = 3.0; // meters
-  const PROXIMITY_WARNING_DISTANCE = 5.0; // meters
-  const HOVER_DISTANCE_THRESHOLD = 8.0; // meters for raycaster hover
+  getHealthBadge() {
+    const badges = {
+      healthy: '<span class="health-badge" style="background: #81c784;">✓ Healthy</span>',
+      warning: '<span class="health-badge" style="background: #ffb74d;">⚠ Warning</span>',
+      critical: '<span class="health-badge" style="background: #e57373;">✗ Critical</span>'
+    };
+    return badges[this.health] || '<span class="health-badge">Unknown</span>';
+  }
 
-  // ─── Initialization ───────────────────────────────────────────────────────
+  toJSON() {
+    return {
+      id: this.id,
+      name: this.name,
+      role: this.role,
+      color: this.color,
+      position: this.position,
+      health: this.health,
+      mood: this.mood,
+      token_count: this.tokenCount,
+      uptime: this.uptime,
+      last_seen: this.lastSeen
+    };
+  }
+}
 
-  async function init() {
+/**
+ * Connection class representing relationships between thronglets
+ */
+class Connection {
+  constructor(data, fromThronglet, toThronglet) {
+    this.from = data.from;
+    this.to = data.to;
+    this.type = data.type;
+    this.color = data.color;
+    this.label = data.label;
+    this.fromThronglet = fromThronglet;
+    this.toThronglet = toThronglet;
+    this.line = null;
+  }
+
+  toJSON() {
+    return {
+      from: this.from,
+      to: this.to,
+      type: this.type,
+      color: this.color,
+      label: this.label
+    };
+  }
+}
+
+/**
+ * VR Practice Mode main controller
+ */
+class VRPracticeMode {
+  constructor() {
+    this.scene = document.querySelector('a-scene');
+    this.throngletsContainer = document.getElementById('thronglets-container');
+    this.connectionsContainer = document.getElementById('connections-container');
+    this.init();
+  }
+
+  async init() {
     try {
-      // Load configuration
-      CONFIG = await loadConfig();
-
-      // Generate grid texture
-      generateGridTexture();
-
-      // Create thronglet avatars
-      createThronglets();
-
-      // Create connection lines
-      createConnections();
-
-      // Setup VR detection and controls
-      setupVRControls();
-
-      // Setup interaction handlers
-      setupInteractionHandlers();
-
-      // Start animation loop
-      LAST_TIME = performance.now();
-      ANIMATION_LOOP();
-
-      // Hide loading overlay
-      const overlay = document.getElementById('loading-overlay');
-      overlay.classList.add('hidden');
-      setTimeout(() => overlay.remove(), 700);
-
-      console.log('[Thronglets VR] Initialized successfully');
-    } catch (err) {
-      console.error('[Thronglets VR] Initialization failed:', err);
-      const overlay = document.getElementById('loading-overlay');
-      overlay.innerHTML = `
-        <h1 style="color: #e57373;">⚠️ Error</h1>
-        <p style="color: #ccc; max-width: 400px; text-align: center;">
-          Failed to load VR world.<br><br>
-          <code style="color: #e57373;">${err.message}</code>
-        </p>
-      `;
+      await this.loadConfiguration();
+      await this.createEnvironment();
+      await this.createThronglets();
+      await this.createConnections();
+      this.setupEventHandlers();
+      this.startSimulation();
+      this.updateDebugPanel();
+      console.log('✓ VR Practice Mode initialized successfully');
+    } catch (error) {
+      console.error('✗ Failed to initialize VR Practice Mode:', error);
+      this.showError('Failed to initialize VR Practice Mode');
     }
   }
 
-  // ─── Config Loading ───────────────────────────────────────────────────────
-
-  async function loadConfig() {
-    const response = await fetch('vr_config.json');
-    if (!response.ok) throw new Error(`HTTP ${response.status}: vr_config.json not found`);
-    return response.json();
-  }
-
-  // ─── Grid Texture Generation ──────────────────────────────────────────────
-
-  function generateGridTexture() {
-    const canvas = document.getElementById('grid-canvas');
-    if (!canvas) return;
-
-    const ctx = canvas.getContext('2d');
-    const size = canvas.width;
-
-    // Background
-    ctx.fillStyle = '#1a1a2e';
-    ctx.fillRect(0, 0, size, size);
-
-    // Grid lines
-    const gridSize = 32; // pixels per grid cell
-    ctx.strokeStyle = 'rgba(79, 195, 247, 0.15)';
-    ctx.lineWidth = 1;
-
-    for (let i = 0; i <= size; i += gridSize) {
-      ctx.beginPath();
-      ctx.moveTo(i, 0);
-      ctx.lineTo(i, size);
-      ctx.stroke();
-
-      ctx.beginPath();
-      ctx.moveTo(0, i);
-      ctx.lineTo(size, i);
-      ctx.stroke();
-    }
-
-    // Major grid lines (every 4 cells)
-    ctx.strokeStyle = 'rgba(79, 195, 247, 0.3)';
-    ctx.lineWidth = 2;
-
-    for (let i = 0; i <= size; i += gridSize * 4) {
-      ctx.beginPath();
-      ctx.moveTo(i, 0);
-      ctx.lineTo(i, size);
-      ctx.stroke();
-
-      ctx.beginPath();
-      ctx.moveTo(0, i);
-      ctx.lineTo(size, i);
-      ctx.stroke();
-    }
-
-    // Update the A-Frame material
-    const mixin = document.getElementById('grid-texture');
-    if (mixin) {
-      mixin.setAttribute('material', 'src', `#${canvas.id}`);
+  async loadConfiguration() {
+    try {
+      const response = await fetch('config.json');
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+      VRState.config = await response.json();
+      VRState.settings = VRState.config.settings || VRState.settings;
+      console.log('✓ Configuration loaded:', VRState.config.metadata.description);
+    } catch (error) {
+      console.warn('⚠ Could not load config.json, using defaults');
+      VRState.config = null;
     }
   }
 
-  // ─── Thronglet Avatar Creation ────────────────────────────────────────────
-
-  function createThronglets() {
-    const container = document.getElementById('thronglets-container');
-    if (!container || !CONFIG?.thronglets) return;
-
-    CONFIG.thronglets.forEach((thronglet, index) => {
-      const entity = document.createElement('a-entity');
-      entity.setAttribute('id', `thronglet_${index}`);
-      entity.setAttribute('position', `${thronglet.position.x} ${thronglet.position.y} ${thronglet.position.z}`);
-      entity.setAttribute('class', 'thronglet');
-      entity.setAttribute('data-thronglet-id', index);
-      entity.setAttribute('data-health', thronglet.health);
-      entity.setAttribute('data-role', thronglet.role);
-
-      // Create the visual avatar
-      createAvatar(entity, thronglet);
-
-      // Create nameplate
-      createNameplate(entity, thronglet);
-
-      // Create halo (for critical health)
-      if (thronglet.health < 30) {
-        createHalo(entity, thronglet);
+  async createEnvironment() {
+    // Set environment based on config
+    if (VRState.config && VRState.config.world) {
+      const world = VRState.config.world;
+      
+      // Set ground size
+      const ground = document.getElementById('ground');
+      if (ground) {
+        ground.setAttribute('width', world.ground_size);
+        ground.setAttribute('height', world.ground_size);
       }
 
-      container.appendChild(entity);
-      THRONGLET_ENTITIES[index] = entity;
-    });
-  }
-
-  function createAvatar(entity, thronglet) {
-    // Main body (capsule-like shape using cylinder + spheres)
-    const body = document.createElement('a-entity');
-    body.setAttribute('class', 'thronglet-body');
-
-    // Cylinder body
-    const cylinder = document.createElement('a-cylinder');
-    cylinder.setAttribute('radius', '0.3');
-    cylinder.setAttribute('height', '0.8');
-    cylinder.setAttribute('position', '0 0.4 0');
-    cylinder.setAttribute('material', `color: ${getRoleColor(thronglet.role)}; opacity: 0.8; shader: flat`);
-    body.appendChild(cylinder);
-
-    // Sphere head
-    const head = document.createElement('a-sphere');
-    head.setAttribute('radius', '0.25');
-    head.setAttribute('position', '0 1.0 0');
-    head.setAttribute('material', `color: ${getRoleColor(thronglet.role)}; opacity: 0.9; shader: flat`);
-    body.appendChild(head);
-
-    // Eyes
-    const leftEye = document.createElement('a-sphere');
-    leftEye.setAttribute('radius', '0.05');
-    leftEye.setAttribute('position', '-0.08 1.05 0.2');
-    leftEye.setAttribute('material', 'color: #ffffff; shader: flat');
-    body.appendChild(leftEye);
-
-    const rightEye = document.createElement('a-sphere');
-    rightEye.setAttribute('radius', '0.05');
-    rightEye.setAttribute('position', '0.08 1.05 0.2');
-    rightEye.setAttribute('material', 'color: #ffffff; shader: flat');
-    body.appendChild(rightEye);
-
-    // Eye pupils
-    const leftPupil = document.createElement('a-sphere');
-    leftPupil.setAttribute('radius', '0.025');
-    leftPupil.setAttribute('position', '-0.08 1.05 0.24');
-    leftPupil.setAttribute('material', 'color: #000000; shader: flat');
-    body.appendChild(leftPupil);
-
-    const rightPupil = document.createElement('a-sphere');
-    rightPupil.setAttribute('radius', '0.025');
-    rightPupil.setAttribute('position', '0.08 1.05 0.24');
-    rightPupil.setAttribute('material', 'color: #000000; shader: flat');
-    body.appendChild(rightPupil);
-
-    entity.appendChild(body);
-  }
-
-  function createNameplate(entity, thronglet) {
-    const nameplate = document.createElement('a-entity');
-    nameplate.setAttribute('class', 'thronglet-nameplate');
-    nameplate.setAttribute('position', '0 1.8 0');
-    nameplate.setAttribute('look-at', '#camera');
-
-    // Background plane
-    const bgPlane = document.createElement('a-plane');
-    bgPlane.setAttribute('width', '1.2');
-    bgPlane.setAttribute('height', '0.4');
-    bgPlane.setAttribute('position', '0 0 0');
-    bgPlane.setAttribute('material', `color: rgba(15, 15, 35, 0.8); opacity: 0.9; shader: flat`);
-    nameplate.appendChild(bgPlane);
-
-    // Name text
-    const nameText = document.createElement('a-text');
-    nameText.setAttribute('value', thronglet.name);
-    nameText.setAttribute('align', 'center');
-    nameText.setAttribute('color', '#ffffff');
-    nameText.setAttribute('width', '1.2');
-    nameText.setAttribute('position', '0 0.1 0.01');
-    nameText.setAttribute('font', 'monospace');
-    nameText.setAttribute('side', 'double');
-    nameplate.appendChild(nameText);
-
-    // Health bar background
-    const healthBg = document.createElement('a-plane');
-    healthBg.setAttribute('width', '1.0');
-    healthBg.setAttribute('height', '0.08');
-    healthBg.setAttribute('position', '0 -0.12 0.01');
-    healthBg.setAttribute('material', 'color: #333333; opacity: 0.8; shader: flat');
-    nameplate.appendChild(healthBg);
-
-    // Health bar fill
-    const healthFill = document.createElement('a-plane');
-    healthFill.setAttribute('width', `${(thronglet.health / 100).toFixed(2)}`);
-    healthFill.setAttribute('height', '0.06');
-    healthFill.setAttribute('position', `${-0.5 + (thronglet.health / 100) * 0.5} -0.12 0.015`);
-    healthFill.setAttribute('material', `color: ${getHealthColor(thronglet.health)}; opacity: 0.9; shader: flat`);
-    nameplate.appendChild(healthFill);
-
-    entity.appendChild(nameplate);
-  }
-
-  function createHalo(entity, thronglet) {
-    const halo = document.createElement('a-entity');
-    halo.setAttribute('class', 'thronglet-halo');
-    halo.setAttribute('position', '0 0.5 0');
-
-    const ring = document.createElement('a-ring');
-    ring.setAttribute('radiusInner', '0.5');
-    ring.setAttribute('radiusOuter', '0.55');
-    ring.setAttribute('color', '#f44336');
-    ring.setAttribute('opacity', '0.5');
-    ring.setAttribute('rotation', '-90 0 0');
-    halo.appendChild(ring);
-
-    entity.appendChild(halo);
-  }
-
-  // ─── Connection Lines ──────────────────────────────────────────────────────
-
-  function createConnections() {
-    const container = document.getElementById('connections-container');
-    if (!container || !CONFIG?.connections) return;
-
-    CONFIG.connections.forEach((conn) => {
-      const fromEntity = THRONGLET_ENTITIES[conn.from];
-      const toEntity = THRONGLET_ENTITIES[conn.to];
-      if (!fromEntity || !toEntity) return;
-
-      const line = document.createElement('a-entity');
-      line.setAttribute('class', 'connection-line');
-      line.setAttribute('line', `start: 0 0 0; end: 0 0 0; color: ${getRoleColor(CONFIG.thronglets[conn.from].role)}; opacity: 0.3; shader: flat`);
-      line.setAttribute('position', '0 0.5 0');
-      line.setAttribute('from-thronglet', conn.from);
-      line.setAttribute('to-thronglet', conn.to);
-
-      container.appendChild(line);
-      CONNECTION_LINES.push(line);
-    });
-  }
-
-  // ─── VR Controls ──────────────────────────────────────────────────────────
-
-  function setupVRControls() {
-    const scene = document.getElementById('scene');
-    const cameraRig = document.getElementById('camera-rig');
-    const reticle = document.getElementById('reticle');
-
-    // Detect VR mode
-    scene.addEventListener('enter-vr', () => {
-      document.getElementById('desktop-controls').style.display = 'none';
-      document.getElementById('vr-controls').style.display = 'inline';
-      setupVRTeleportation(scene, cameraRig, reticle);
-    });
-
-    scene.addEventListener('exit-vr', () => {
-      document.getElementById('desktop-controls').style.display = 'inline';
-      document.getElementById('vr-controls').style.display = 'none';
-    });
-
-    // Desktop teleportation
-    scene.addEventListener('click', (event) => {
-      if (scene.is('vr-mode')) return;
-
-      const raycaster = new THREE.Raycaster();
-      const camera = document.getElementById('camera');
-      const vector = new THREE.Vector3();
-
-      // Get mouse position from click event
-      const mouse = new THREE.Vector2();
-      mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
-      mouse.y = -(event.clientY / window.innerHeight) * 2 + 1;
-
-      vector.setFromCamera(mouse, camera);
-      raycaster.set(camera.getWorldPosition(new THREE.Vector3()), vector.direction);
-
-      const intersects = raycaster.intersectObject(scene.getObjectByName('ground-plane'));
-      if (intersects.length > 0) {
-        const point = intersects[0].point;
-        cameraRig.setAttribute('position', `${point.x} ${cameraRig.getAttribute('position').y} ${point.z}`);
+      // Set sky color
+      this.scene.setAttribute('environment', `skyColor: ${world.sky_color}`);
+      
+      // Configure fog
+      if (world.fog_enabled) {
+        this.scene.setAttribute('fog', `type: linear; color: ${world.fog_color}; density: ${world.fog_density}`);
       }
-    });
-  }
 
-  function setupVRTeleportation(scene, cameraRig, reticle) {
-    // Add VR controllers
-    const controller0 = scene.querySelector('a-entity[controller]') || document.createElement('a-entity');
-    controller0.setAttribute('controller', 'hand-tracking');
-    controller0.setAttribute('class', 'vr-controller');
-    scene.appendChild(controller0);
-
-    // Teleportation ray
-    const teleportRay = document.createElement('a-entity');
-    teleportRay.setAttribute('class', 'vr-teleport-ray');
-    teleportRay.setAttribute('line', 'start: 0 0 0; end: 0 0 -3; color: #4fc3f7; opacity: 0.5');
-    teleportRay.setAttribute('position', '0 0 -0.5');
-    teleportRay.setAttribute('rotation', '-90 0 0');
-    scene.appendChild(teleportRay);
-
-    // Teleportation target
-    const teleportTarget = document.createElement('a-entity');
-    teleportTarget.setAttribute('class', 'vr-teleport-target');
-    teleportTarget.setAttribute('ring', 'radiusInner: 0.1; radiusOuter: 0.15; color: #4fc3f7; opacity: 0.3');
-    teleportTarget.setAttribute('position', '0 0 -3');
-    teleportTarget.setAttribute('rotation', '-90 0 0');
-    teleportTarget.setAttribute('visible', 'false');
-    scene.appendChild(teleportTarget);
-
-    // Handle teleportation
-    scene.addEventListener('click', (event) => {
-      if (!event.target.closest('a-entity')?.getAttribute('class')?.includes('vr-controller')) return;
-
-      const raycaster = new THREE.Raycaster();
-      const controller = event.target.closest('a-entity');
-      const controllerPos = new THREE.Vector3();
-      controller.getWorldPosition(controllerPos);
-
-      const controllerDir = new THREE.Vector3();
-      controller.getWorldDirection(controllerDir);
-
-      raycaster.set(controllerPos, controllerDir);
-
-      const intersects = raycaster.intersectObject(scene.getObjectByName('ground-plane'));
-      if (intersects.length > 0) {
-        const point = intersects[0].point;
-        cameraRig.setAttribute('position', `${point.x} ${cameraRig.getAttribute('position').y} ${point.z}`);
-      }
-    });
-  }
-
-  // ─── Interaction Handlers ────────────────────────────────────────────────
-
-  function setupInteractionHandlers() {
-    const camera = document.getElementById('camera');
-    if (!camera) return;
-
-    // Raycaster for hover detection
-    const raycaster = new THREE.Raycaster();
-    const mouse = new THREE.Vector2();
-
-    // Update raycaster on mouse move
-    window.addEventListener('mousemove', (event) => {
-      if (document.getElementById('scene').is('vr-mode')) return;
-
-      mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
-      mouse.y = -(event.clientY / window.innerHeight) * 2 + 1;
-
-      raycaster.setFromCamera(mouse, camera);
-
-      // Check for thronglet intersections
-      const throngletEntities = Object.values(THRONGLET_ENTITIES);
-      const intersects = raycaster.intersectObjects(throngletEntities, true);
-
-      let foundThronglet = null;
-      if (intersects.length > 0) {
-        // Walk up to find the thronglet entity
-        let obj = intersects[0].object;
-        while (obj && obj !== document.body) {
-          if (obj.classList?.contains('thronglet')) {
-            foundThronglet = obj;
-            break;
-          }
-          obj = obj.parent;
+      // Configure lighting
+      if (world.lighting) {
+        const ambient = this.scene.querySelector('[light="type: ambient"]');
+        const directional = this.scene.querySelector('[light="type: directional"]');
+        
+        if (ambient) {
+          ambient.setAttribute('color', world.lighting.ambient);
+        }
+        if (directional) {
+          directional.setAttribute('color', world.lighting.directional);
+          directional.setAttribute('intensity', world.lighting.directional_intensity);
         }
       }
-
-      // Handle hover state changes
-      if (foundThronglet) {
-        const throngletId = parseInt(foundThronglet.getAttribute('data-thronglet-id'));
-        if (hoveredThrongletId !== throngletId) {
-          // Un-hover previous
-          if (hoveredThrongletId !== null) {
-            unhoverThronglet(hoveredThrongletId);
-          }
-          // Hover new
-          hoverThronglet(throngletId);
-          hoveredThrongletId = throngletId;
-        }
-      } else {
-        // No thronglet hovered
-        if (hoveredThrongletId !== null) {
-          unhoverThronglet(hoveredThrongletId);
-          hoveredThrongletId = null;
-        }
-      }
-    });
-
-    // Click to select/throttle thronglet
-    window.addEventListener('click', (event) => {
-      if (document.getElementById('scene').is('vr-mode')) return;
-
-      if (hoveredThrongletId !== null) {
-        selectThronglet(hoveredThrongletId);
-      } else {
-        deselectThronglet();
-      }
-    });
-
-    // Proximity check in animation loop
-    setInterval(() => {
-      checkProximity();
-    }, 1000);
-  }
-
-  function hoverThronglet(throngletId) {
-    const entity = THRONGLET_ENTITIES[throngletId];
-    if (!entity) return;
-
-    // Highlight effect
-    const body = entity.querySelector('.thronglet-body');
-    if (body) {
-      body.setAttribute('animation', 'property: scale; to: 1.1 1.1 1.1; dur: 200; easing: easeOutQuad');
-    }
-
-    // Show hover indicator
-    const hoverIndicator = document.getElementById('hover-indicator');
-    if (hoverIndicator) {
-      hoverIndicator.classList.add('visible');
-    }
-
-    // Show detail panel
-    showDetailPanel(throngletId);
-  }
-
-  function unhoverThronglet(throngletId) {
-    const entity = THRONGLET_ENTITIES[throngletId];
-    if (!entity) return;
-
-    // Reset highlight
-    const body = entity.querySelector('.thronglet-body');
-    if (body) {
-      body.setAttribute('animation', 'property: scale; to: 1 1 1; dur: 200; easing: easeOutQuad');
-    }
-
-    // Hide hover indicator
-    const hoverIndicator = document.getElementById('hover-indicator');
-    if (hoverIndicator) {
-      hoverIndicator.classList.remove('visible');
     }
   }
 
-  function selectThronglet(throngletId) {
-    selectedThrongletId = throngletId;
-    const entity = THRONGLET_ENTITIES[throngletId];
-    if (!entity) return;
-
-    // Pulse effect
-    const body = entity.querySelector('.thronglet-body');
-    if (body) {
-      body.setAttribute('animation', 'property: scale; to: 1.2 1.2 1.2; dur: 100; easing: easeOutQuad; loop: 1');
-      setTimeout(() => {
-        body.setAttribute('animation', 'property: scale; to: 1.1 1.1 1.1; dur: 200; easing: easeOutQuad');
-      }, 100);
-    }
-
-    // Show detail panel
-    showDetailPanel(throngletId);
-  }
-
-  function deselectThronglet() {
-    selectedThrongletId = null;
-    hideDetailPanel();
-  }
-
-  function showDetailPanel(throngletId) {
-    const entity = THRONGLET_ENTITIES[throngletId];
-    if (!entity) return;
-
-    const thronglet = CONFIG.thronglets[throngletId];
-    if (!thronglet) return;
-
-    const panel = document.getElementById('detail-panel');
-    if (!panel) return;
-
-    // Update panel content
-    document.getElementById('panel-avatar-icon').textContent = getRoleEmoji(thronglet.role);
-    document.getElementById('panel-avatar-icon').style.background = getRoleColor(thronglet.role);
-    document.getElementById('panel-name').textContent = thronglet.name;
-    document.getElementById('panel-role-detail').textContent = thronglet.role;
-    document.getElementById('panel-health').textContent = `${thronglet.health}%`;
-    document.getElementById('panel-health').className = `stat-value ${getHealthClass(thronglet.health)}`;
-    document.getElementById('panel-uptime').textContent = formatUptime(thronglet.uptime);
-    document.getElementById('panel-last-seen').textContent = formatLastSeen(thronglet.lastSeen);
-    document.getElementById('panel-location').textContent = `${thronglet.position.x.toFixed(1)}, ${thronglet.position.z.toFixed(1)}`;
-
-    // Show panel
-    panel.classList.add('visible');
-  }
-
-  function hideDetailPanel() {
-    const panel = document.getElementById('detail-panel');
-    if (panel) {
-      panel.classList.remove('visible');
-    }
-  }
-
-  function checkProximity() {
-    const camera = document.getElementById('camera');
-    if (!camera) return;
-
-    const cameraPos = camera.getAttribute('position');
-    if (!cameraPos) return;
-
-    let closestThronglet = null;
-    let closestDistance = Infinity;
-
-    // Find closest thronglet
-    Object.entries(THRONGLET_ENTITIES).forEach(([id, entity]) => {
-      const pos = entity.getAttribute('position');
-      if (!pos) return;
-
-      const dx = cameraPos.x - pos.x;
-      const dy = cameraPos.y - pos.y;
-      const dz = cameraPos.z - pos.z;
-      const distance = Math.sqrt(dx * dx + dy * dy + dz * dz);
-
-      if (distance < closestDistance) {
-        closestDistance = distance;
-        closestThronglet = parseInt(id);
-      }
-    });
-
-    if (closestThronglet === null) {
-      hideProximityAlert();
+  async createThronglets() {
+    if (!VRState.config || !VRState.config.thronglets) {
+      console.warn('⚠ No thronglets data in configuration');
       return;
     }
 
-    const thronglet = CONFIG.thronglets[closestThronglet];
+    const container = this.throngletsContainer;
+    
+    for (const data of VRState.config.thronglets) {
+      const thronglet = new Thronglet(data);
+      VRState.thronglets.push(thronglet);
+      
+      // Create 3D mesh
+      await this.createThrongletMesh(thronglet, container);
+      
+      // Create health halo if needed
+      if (thronglet.health !== 'healthy' && VRState.settings.showHealthHalos) {
+        await this.createHealthHalo(thronglet);
+      }
+      
+      // Create nameplate
+      if (VRState.settings.showNameplates) {
+        await this.createNameplate(thronglet);
+      }
+    }
+
+    console.log(`✓ Created ${VRState.thronglets.length} thronglets`);
+  }
+
+  async createThrongletMesh(thronglet, container) {
+    const entity = document.createElement('a-entity');
+    entity.setAttribute('position', `${thronglet.position.x} ${thronglet.position.y} ${thronglet.position.z}`);
+    entity.setAttribute('class', 'selectable thronglet');
+    entity.setAttribute('data-id', thronglet.id);
+    
+    // Create main body (cube)
+    const body = document.createElement('a-box');
+    body.setAttribute('color', thronglet.color);
+    body.setAttribute('width', '1.5');
+    body.setAttribute('height', '1.5');
+    body.setAttribute('depth', '1.5');
+    body.setAttribute('class', 'thronglet-body');
+    entity.appendChild(body);
+
+    // Add glow effect
+    const glow = document.createElement('a-entity');
+    glow.setAttribute('position', '0 0 0.76');
+    glow.setAttribute('light', `type: point; color: ${thronglet.color}; intensity: 0.5; distance: 5`);
+    entity.appendChild(glow);
+
+    container.appendChild(entity);
+    thronglet.mesh = entity;
+  }
+
+  async createHealthHalo(thronglet) {
+    const halo = document.createElement('a-entity');
+    halo.setAttribute('position', `${thronglet.position.x} ${thronglet.position.y + 1} ${thronglet.position.z}`);
+    halo.setAttribute('light', `type: point; color: ${thronglet.getHealthColor()}; intensity: 1; distance: 3`);
+    halo.setAttribute('class', 'health-halo');
+    halo.setAttribute('data-id', thronglet.id);
+    
+    this.throngletsContainer.appendChild(halo);
+    thronglet.halo = halo;
+  }
+
+  async createNameplate(thronglet) {
+    const nameplate = document.createElement('a-entity');
+    nameplate.setAttribute('position', `${thronglet.position.x} ${thronglet.position.y + 2} ${thronglet.position.z}`);
+    nameplate.setAttribute('text', `
+      align: center;
+      color: #ffffff;
+      fontSize: 0.5;
+      value: ${thronglet.name};
+      width: 4;
+    `);
+    nameplate.setAttribute('class', 'nameplate');
+    nameplate.setAttribute('data-id', thronglet.id);
+    
+    this.throngletsContainer.appendChild(nameplate);
+    thronglet.nameplate = nameplate;
+  }
+
+  async createConnections() {
+    if (!VRState.config || !VRState.config.relationships) {
+      console.warn('⚠ No relationships data in configuration');
+      return;
+    }
+
+    const container = this.connectionsContainer;
+    
+    for (const data of VRState.config.relationships) {
+      const fromThronglet = VRState.thronglets.find(t => t.id === data.from);
+      const toThronglet = VRState.thronglets.find(t => t.id === data.to);
+      
+      if (fromThronglet && toThronglet) {
+        const connection = new Connection(data, fromThronglet, toThronglet);
+        VRState.connections.push(connection);
+        
+        // Create connection line
+        await this.createConnectionLine(connection, container);
+      }
+    }
+
+    console.log(`✓ Created ${VRState.connections.length} connections`);
+  }
+
+  async createConnectionLine(connection, container) {
+    const fromPos = connection.fromThronglet.position;
+    const toPos = connection.toThronglet.position;
+    
+    // Calculate line properties
+    const distance = Math.sqrt(
+      Math.pow(toPos.x - fromPos.x, 2) +
+      Math.pow(toPos.y - fromPos.y, 2) +
+      Math.pow(toPos.z - fromPos.z, 2)
+    );
+    
+    const angle = Math.atan2(toPos.z - fromPos.z, toPos.x - fromPos.x);
+    const midX = (fromPos.x + toPos.x) / 2;
+    const midY = (fromPos.y + toPos.y) / 2 + 0.5;
+    const midZ = (fromPos.z + toPos.z) / 2;
+
+    const line = document.createElement('a-line');
+    line.setAttribute('color', connection.color);
+    line.setAttribute('opacity', '0.6');
+    line.setAttribute('width', '0.1');
+    line.setAttribute('position', `${midX} ${midY} ${midZ}`);
+    line.setAttribute('rotation', `0 ${angle * (180 / Math.PI)} 0`);
+    line.setAttribute('scale', `1 ${distance} 1`);
+    line.setAttribute('class', 'connection-line');
+    line.setAttribute('data-from', connection.from);
+    line.setAttribute('data-to', connection.to);
+    
+    container.appendChild(line);
+    connection.line = line;
+  }
+
+  setupEventHandlers() {
+    // Raycaster click handler
+    const cursor = document.getElementById('cursor');
+    cursor.addEventListener('click', (event) => {
+      const target = event.detail.target;
+      if (target && target.hasAttribute('data-id')) {
+        const throngletId = target.getAttribute('data-id');
+        this.selectThronglet(throngletId);
+      }
+    });
+
+    // Keyboard handlers
+    document.addEventListener('keydown', (event) => {
+      this.handleKeyboard(event);
+    });
+
+    // Window resize handler
+    window.addEventListener('resize', () => {
+      this.handleResize();
+    });
+
+    // VR mode handlers
+    document.addEventListener('enter-vr', () => {
+      this.onEnterVR();
+    });
+
+    document.addEventListener('exit-vr', () => {
+      this.onExitVR();
+    });
+  }
+
+  handleKeyboard(event) {
+    // Teleport to thronglets (1-5)
+    if (event.key >= '1' && event.key <= '5') {
+      const index = parseInt(event.key) - 1;
+      if (VRState.thronglets[index]) {
+        this.teleportToThronglet(index);
+      }
+    }
+
+    // Deselect on ESC
+    if (event.key === 'Escape') {
+      this.deselectThronglet();
+    }
+
+    // Toggle settings
+    if (event.key === 'N' || event.key === 'n') {
+      this.toggleNameplates();
+    }
+    if (event.key === 'C' || event.key === 'c') {
+      this.toggleConnections();
+    }
+    if (event.key === 'H' || event.key === 'h') {
+      this.toggleHealthHalos();
+    }
+    if (event.key === 'D' || event.key === 'd') {
+      this.toggleDebug();
+    }
+  }
+
+  selectThronglet(id) {
+    const thronglet = VRState.thronglets.find(t => t.id === id);
     if (!thronglet) return;
 
-    const now = performance.now();
-
-    // Check for critical state
-    if (thronglet.health < 30 && closestDistance < PROXIMITY_CRITICAL_DISTANCE) {
-      if (proximityAlertThrongletId !== closestThronglet || now - lastProximityAlertTime > PROXIMITY_ALERT_COOLDOWN) {
-        showProximityAlert('critical', thronglet);
-        proximityAlertThrongletId = closestThronglet;
-        lastProximityAlertTime = now;
-      }
+    // Deselect previous
+    if (VRState.selectedThronglet) {
+      this.deselectThronglet();
     }
-    // Check for warning state
-    else if (thronglet.health < 60 && closestDistance < PROXIMITY_WARNING_DISTANCE) {
-      if (proximityAlertThrongletId !== closestThronglet || now - lastProximityAlertTime > PROXIMITY_ALERT_COOLDOWN) {
-        showProximityAlert('warning', thronglet);
-        proximityAlertThrongletId = closestThronglet;
-        lastProximityAlertTime = now;
-      }
-    } else {
-      hideProximityAlert();
+
+    VRState.selectedThronglet = thronglet;
+    this.showDetailPanel(thronglet);
+    this.updateDebugPanel();
+
+    // Highlight selection
+    if (thronglet.mesh) {
+      thronglet.mesh.setAttribute('animation', 'property: scale; to: 1.2 1.2 1.2; dur: 200; easing: easeOutQuad');
     }
   }
 
-  function showProximityAlert(type, thronglet) {
-    const alert = document.getElementById('proximity-alert');
-    if (!alert) return;
-
-    alert.textContent = type === 'critical'
-      ? `⚠️ ${thronglet.name} is in Critical State!`
-      : `⚠️ ${thronglet.name} needs Attention`;
-
-    alert.className = type === 'critical' ? 'visible' : 'visible warning';
-    proximityAlertActive = true;
-  }
-
-  function hideProximityAlert() {
-    const alert = document.getElementById('proximity-alert');
-    if (alert) {
-      alert.classList.remove('visible', 'warning');
-    }
-    proximityAlertActive = false;
-    proximityAlertThrongletId = null;
-  }
-
-  // ─── Animation Loop ────────────────────────────────────────────────────────
-
-  function ANIMATION_LOOP() {
-    ANIMATION_FRAME = requestAnimationFrame(ANIMATION_LOOP);
-
-    const now = performance.now();
-    const delta = (now - LAST_TIME) / 1000;
-    LAST_TIME = now;
-
-    // Update connection lines
-    updateConnectionLines();
-
-    // Update nameplate billboards
-    updateBillboards();
-
-    // Pulse critical health halos
-    pulseCriticalHalos(now);
-
-    // Update hover indicator position
-    updateHoverIndicator();
-  }
-
-  function updateBillboards() {
-    const camera = document.getElementById('camera');
-    if (!camera) return;
-
-    const cameraPos = camera.getAttribute('position');
-    if (!cameraPos) return;
-
-    // Update all nameplates to face camera
-    document.querySelectorAll('.thronglet-nameplate').forEach((nameplate) => {
-      const pos = nameplate.getAttribute('position');
-      if (!pos) return;
-
-      const dx = cameraPos.x - pos.x;
-      const dy = cameraPos.y - pos.y;
-      const dz = cameraPos.z - pos.z;
-
-      const yaw = Math.atan2(dx, dz) * 180 / Math.PI;
-      const pitch = Math.atan2(dy, Math.sqrt(dx * dx + dz * dz)) * 180 / Math.PI;
-
-      nameplate.setAttribute('rotation', `${pitch} ${yaw} 0`);
-    });
-  }
-
-  function pulseCriticalHalos(time) {
-    const pulse = Math.sin(time / 500) * 0.3 + 0.7;
-
-    document.querySelectorAll('.thronglet-halo').forEach((halo) => {
-      const parent = halo.parentElement;
-      if (parent?.getAttribute('id')?.includes('thronglet_3')) { // Data (critical)
-        halo.setAttribute('opacity', pulse.toString());
+  deselectThronglet() {
+    if (VRState.selectedThronglet) {
+      const thronglet = VRState.selectedThronglet;
+      
+      // Reset scale
+      if (thronglet.mesh) {
+        thronglet.mesh.setAttribute('animation', 'property: scale; to: 1 1 1; dur: 200; easing: easeOutQuad');
       }
-    });
+
+      // Hide detail panel
+      closeDetailPanel();
+      
+      VRState.selectedThronglet = null;
+      this.updateDebugPanel();
+    }
   }
 
-  function updateHoverIndicator() {
-    const indicator = document.getElementById('hover-indicator');
-    if (!indicator || !indicator.classList.contains('visible')) return;
+  showDetailPanel(thronglet) {
+    const panel = document.getElementById('detail-panel');
+    const content = document.getElementById('panel-content');
+    
+    // Update panel content
+    document.getElementById('panel-name').textContent = thronglet.name;
+    document.getElementById('panel-role').textContent = thronglet.role;
+    document.getElementById('panel-health').innerHTML = thronglet.getHealthBadge();
+    document.getElementById('panel-mood').textContent = thronglet.mood;
+    document.getElementById('panel-tokens').textContent = thronglet.tokenCount;
+    document.getElementById('panel-position').textContent = 
+      `X: ${thronglet.position.x.toFixed(2)}, Y: ${thronglet.position.y.toFixed(2)}, Z: ${thronglet.position.z.toFixed(2)}`;
 
-    // The indicator is already positioned via CSS, so we just need to ensure it's visible
-    // when hovering over a thronglet
+    // Show panel
+    panel.classList.add('visible');
+    document.body.style.overflow = 'hidden';
   }
 
-  function updateConnectionLines() {
-    CONNECTION_LINES.forEach((line) => {
-      const fromId = parseInt(line.getAttribute('from-thronglet'));
-      const toId = parseInt(line.getAttribute('to-thronglet'));
+  teleportToThronglet(index) {
+    const thronglet = VRState.thronglets[index];
+    if (!thronglet) return;
 
-      const fromEntity = THRONGLET_ENTITIES[fromId];
-      const toEntity = THRONGLET_ENTITIES[toId];
-
-      if (!fromEntity || !toEntity) return;
-
-      const fromPos = fromEntity.getAttribute('position');
-      const toPos = toEntity.getAttribute('position');
-
-      if (!fromPos || !toPos) return;
-
-      // Calculate line endpoints
-      const dx = toPos.x - fromPos.x;
-      const dy = toPos.y - fromPos.y;
-      const dz = toPos.z - fromPos.z;
-      const length = Math.sqrt(dx * dx + dy * dy + dz * dz);
-
-      line.setAttribute('line', `end: 0 0 ${-length}`);
-      line.setAttribute('position', `${fromPos.x} ${fromPos.y + 0.5} ${fromPos.z}`);
-      line.setAttribute('rotation', `${Math.atan2(dy, Math.sqrt(dx * dx + dz * dz)) * 180 / Math.PI} ${Math.atan2(dx, dz) * 180 / Math.PI} 0`);
-    });
-  }
-
-  // ─── Utility Functions ────────────────────────────────────────────────────
-
-  function getRoleColor(role) {
-    const colors = {
-      'Compute': '#4fc3f7',
-      'Storage': '#81c784',
-      'Network': '#ffb74d',
-      'Data': '#e57373',
-      'Control': '#ba68c8'
-    };
-    return colors[role] || '#ffffff';
-  }
-
-  function getHealthColor(health) {
-    if (health >= 70) return '#4caf50';
-    if (health >= 30) return '#ff9800';
-    return '#f44336';
-  }
-
-  function getHealthClass(health) {
-    if (health >= 70) return 'healthy';
-    if (health >= 30) return 'warning';
-    return 'critical';
-  }
-
-  function getRoleEmoji(role) {
-    const emojis = {
-      'Compute': '🖥️',
-      'Storage': '💾',
-      'Network': '🌐',
-      'Data': '📊',
-      'Control': '🎛️'
-    };
-    return emojis[role] || '🤖';
-  }
-
-  function formatUptime(seconds) {
-    if (!seconds) return 'N/A';
-    const days = Math.floor(seconds / 86400);
-    const hours = Math.floor((seconds % 86400) / 3600);
-    const minutes = Math.floor((seconds % 3600) / 60);
-    return `${days}d ${hours}h ${minutes}m`;
-  }
-
-  function formatLastSeen(timestamp) {
-    if (!timestamp) return 'N/A';
-    const date = new Date(timestamp);
-    const now = new Date();
-    const diff = now - date;
-
-    if (diff < 60000) return 'Just now';
-    if (diff < 3600000) return `${Math.floor(diff / 60000)}m ago`;
-    if (diff < 86400000) return `${Math.floor(diff / 3600000)}h ago`;
-    return `${Math.floor(diff / 86400000)}d ago`;
-  }
-
-  // ─── Start ──────────────────────────────────────────────────────────────────
-
-  // Wait for A-Frame to be ready
-  if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', init);
-  } else {
-    init();
-  }
-
-  // Handle window resize
-  window.addEventListener('resize', () => {
-    const camera = document.getElementById('camera');
+    const camera = document.querySelector('[camera]');
     if (camera) {
-      camera.setAttribute('fov', '70');
+      camera.setAttribute('position', `${thronglet.position.x} ${thronglet.position.y + 1.6} ${thronglet.position.z}`);
     }
-  });
 
-})();
+    // Show proximity alert
+    this.showProximityAlert(`Teleported to ${thronglet.name}`);
+  }
+
+  showProximityAlert(message) {
+    const alert = document.getElementById('proximity-alert');
+    const alertText = document.getElementById('alert-text');
+    
+    alertText.textContent = message;
+    alert.classList.add('visible');
+    
+    setTimeout(() => {
+      alert.classList.remove('visible');
+    }, 3000);
+  }
+
+  toggleNameplates() {
+    VRState.settings.showNameplates = !VRState.settings.showNameplates;
+    this.updateNameplatesVisibility();
+    
+    const button = document.getElementById('toggle-nameplates');
+    button.classList.toggle('active', VRState.settings.showNameplates);
+  }
+
+  toggleConnections() {
+    VRState.settings.showConnections = !VRState.settings.showConnections;
+    this.updateConnectionsVisibility();
+    
+    const button = document.getElementById('toggle-connections');
+    button.classList.toggle('active', VRState.settings.showConnections);
+  }
+
+  toggleHealthHalos() {
+    VRState.settings.showHealthHalos = !VRState.settings.showHealthHalos;
+    this.updateHealthHalosVisibility();
+    
+    const button = document.getElementById('toggle-health');
+    button.classList.toggle('active', VRState.settings.showHealthHalos);
+  }
+
+  toggleDebug() {
+    VRState.settings.debugMode = !VRState.settings.debugMode;
+    this.updateDebugPanel();
+    
+    const button = document.getElementById('toggle-debug');
+    button.classList.toggle('active', VRState.settings.debugMode);
+  }
+
+  updateNameplatesVisibility() {
+    const nameplates = document.querySelectorAll('.nameplate');
+    nameplates.forEach(nameplate => {
+      nameplate.setAttribute('visible', VRState.settings.showNameplates);
+    });
+  }
+
+  updateConnectionsVisibility() {
+    const connections = document.querySelectorAll('.connection-line');
+    connections.forEach(connection => {
+      connection.setAttribute('visible', VRState.settings.showConnections);
+    });
+  }
+
+  updateHealthHalosVisibility() {
+    const halos = document.querySelectorAll('.health-halo');
+    halos.forEach(halo => {
+      halo.setAttribute('visible', VRState.settings.showHealthHalos);
+    });
+  }
+
+  updateDebugPanel() {
+    if (!VRState.settings.debugMode) return;
+
+    document.getElementById('debug-thronglet-count').textContent = VRState.thronglets.length;
+    document.getElementById('debug-connection-count').textContent = VRState.connections.length;
+    document.getElementById('debug-selected').textContent = 
+      VRState.selectedThronglet ? VRState.selectedThronglet.name : 'None';
+  }
+
+  handleResize() {
+    // A-Frame handles most resize automatically
+    // Add any custom resize logic here if needed
+  }
+
+  onEnterVR() {
+    const indicator = document.getElementById('vr-indicator');
+    indicator.classList.add('visible');
+  }
+
+  onExitVR() {
+    const indicator = document.getElementById('vr-indicator');
+    indicator.classList.remove('visible');
+  }
+
+  showError(message) {
+    console.error('Error:', message);
+    // Could add a UI error notification here
+  }
+
+  startSimulation() {
+    // Simulation loop
+    setInterval(() => {
+      this.updateSimulation();
+    }, 1000); // Update every second
+  }
+
+  updateSimulation() {
+    // Update thronglet states
+    VRState.thronglets.forEach(thronglet => {
+      thronglet.updateTimestamp();
+    });
+
+    // Check for proximity alerts
+    this.checkProximityAlerts();
+
+    // Update debug panel
+    this.updateDebugPanel();
+  }
+
+  checkProximityAlerts() {
+    // Check for critical thronglets
+    const criticalThronglets = VRState.thronglets.filter(t => t.health === 'critical');
+    
+    if (criticalThronglets.length > 0) {
+      const alert = document.getElementById('proximity-alert');
+      const alertText = document.getElementById('alert-text');
+      
+      alertText.textContent = `⚠ ${criticalThronglets.length} Critical Thronglet(s) Detected!`;
+      alert.classList.add('visible');
+      
+      setTimeout(() => {
+        alert.classList.remove('visible');
+      }, 5000);
+    }
+  }
+}
+
+// Global functions for HTML event handlers
+function initThrongletsVR() {
+  VRState.practiceMode = new VRPracticeMode();
+}
+
+function closeDetailPanel() {
+  const panel = document.getElementById('detail-panel');
+  panel.classList.remove('visible');
+  document.body.style.overflow = '';
+}
+
+function toggleNameplatesVisibility() {
+  if (VRState.practiceMode) {
+    VRState.practiceMode.toggleNameplates();
+  }
+}
+
+function toggleConnectionsVisibility() {
+  if (VRState.practiceMode) {
+    VRState.practiceMode.toggleConnections();
+  }
+}
+
+function toggleHealthHalosVisibility() {
+  if (VRState.practiceMode) {
+    VRState.practiceMode.toggleHealthHalos();
+  }
+}
+
+function toggleDebugMode() {
+  if (VRState.practiceMode) {
+    VRState.practiceMode.toggleDebug();
+  }
+}
+
+function teleportToThronglet(index) {
+  if (VRState.practiceMode) {
+    VRState.practiceMode.teleportToThronglet(index);
+  }
+}
+
+function deselectThronglet() {
+  if (VRState.practiceMode) {
+    VRState.practiceMode.deselectThronglet();
+  }
+}
+
+function handleResize() {
+  if (VRState.practiceMode) {
+    VRState.practiceMode.handleResize();
+  }
+}
+
+// Export for testing
+if (typeof module !== 'undefined' && module.exports) {
+  module.exports = {
+    VRState,
+    Thronglet,
+    Connection,
+    VRPracticeMode
+  };
+}

@@ -1,5 +1,5 @@
 from sqlalchemy.orm import Session
-from app.models import ContentTable, ColumnDefinition
+from app.models import ContentTable
 from app.schemas import TableCreate
 import json
 

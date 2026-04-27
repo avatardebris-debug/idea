@@ -100,7 +100,7 @@ def list_fields(table_id: str, db: Session = Depends(get_db)):
         FieldResponse(
             id="custom_fields",
             name="Custom Fields",
-            field_type=FieldTypeId.TEXT,
+            field_type=FieldTypeId.OBJECT,
             options=None,
             is_required=False,
             is_deleted=False,
@@ -168,12 +168,7 @@ def add_field(table_id: str, field_data: FieldCreate, db: Session = Depends(get_
 @router.delete("/{table_id}/fields/{field_id}", status_code=204)
 def remove_field(table_id: str, field_id: str, db: Session = Depends(get_db)):
     """Soft-delete a custom field (data preserved, column hidden)."""
-    table = _get_table(db, table_id)
-
-    field = db.query(TableField).filter(
-        TableField.id == field_id,
-        TableField.table_id == table_id,
-    ).first()
+    field = db.query(TableField).filter(TableField.id == field_id).first()
     if not field:
         raise HTTPException(status_code=404, detail="Field not found")
 

@@ -1,4 +1,4 @@
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 from typing import Optional, List, Any
 from datetime import datetime
 
@@ -54,6 +54,18 @@ class TableCreate(BaseModel):
     name: str
     workspace_id: int
     column_definitions: List[ColumnDefinition]
+
+    @field_validator('name')
+    @classmethod
+    def name_not_empty(cls, v):
+        if not v or not v.strip():
+            raise ValueError('Table name cannot be empty')
+        return v
+
+
+class TableUpdate(BaseModel):
+    name: Optional[str] = None
+    column_definitions: Optional[List[ColumnDefinition]] = None
 
 
 class TableResponse(BaseModel):

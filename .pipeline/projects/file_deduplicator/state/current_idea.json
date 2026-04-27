@@ -1,0 +1,6 @@
+{
+  "title": "File Deduplicator",
+  "description": "Build a Python script that scans a directory recursively, finds duplicate files by MD5 hash, and prints a report of duplicates grouped by hash. Optionally deletes duplicates with a --delete flag (with dry-run mode). Include unit tests.",
+  "status": "phase_1_executing",
+  "total_phases": 1
+}

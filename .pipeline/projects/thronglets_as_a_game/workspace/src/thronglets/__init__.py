@@ -1,3 +1,35 @@
-"""Thronglets as a Game — a grid-based simulation of autonomous agents."""
+"""Thronglets - A 2D world simulation engine."""
 
-__version__ = "0.1.0"
+from .types import (
+    Position,
+    TerrainType,
+    Direction,
+    ActionType,
+    InteractionType,
+    Behavior,
+    Prompt,
+    InteractionEvent,
+)
+from .models import (
+    ThrongletState,
+    Thronglet,
+    WorldConfig,
+    SimulationConfig,
+)
+from .world import World
+
+__all__ = [
+    "Position",
+    "TerrainType",
+    "Direction",
+    "ActionType",
+    "InteractionType",
+    "Behavior",
+    "Prompt",
+    "InteractionEvent",
+    "ThrongletState",
+    "Thronglet",
+    "WorldConfig",
+    "SimulationConfig",
+    "World",
+]

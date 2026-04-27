@@ -50,7 +50,7 @@ def list_videos(
             (Video.title.ilike(search_term)) | (Video.description.ilike(search_term))
         )
 
-    total = db.query(func.count(Video.id)).filter(Video.table_id == table.id).scalar()
+    total = query.count()
 
     items = (
         query.order_by(Video.created_at.desc())

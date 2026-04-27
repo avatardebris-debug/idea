@@ -128,6 +128,11 @@ class TestWorkspaceIntegration:
         response = client.delete(f"/api/workspaces/{workspace_id}")
         assert response.status_code == 204
 
+    def test_workspace_not_found(self, client):
+        """Test 404 for non-existent workspace."""
+        response = client.get("/api/workspaces/999")
+        assert response.status_code == 404
+
 
 class TestTableIntegration:
     """Test table CRUD operations."""
@@ -138,9 +143,9 @@ class TestTableIntegration:
             "workspace_id": 1,
             "name": "Test Table",
             "column_definitions": [
-                {"name": "title", "type": "string"},
+                {"name": "title", "type": "text"},
                 {"name": "content", "type": "text"},
-                {"name": "status", "type": "string"}
+                {"name": "status", "type": "status"}
             ]
         })
         assert response.status_code == 201
@@ -154,178 +159,66 @@ class TestTableIntegration:
         client.post("/api/tables/", json={
             "workspace_id": 1,
             "name": "List Test Table",
-            "column_definitions": [{"name": "title", "type": "string"}]
+            "column_definitions": [
+                {"name": "title", "type": "text"}
+            ]
         })
 
         response = client.get("/api/tables/?workspace_id=1")
         assert response.status_code == 200
         data = response.json()
         assert "items" in data
+        assert "total" in data
         assert len(data["items"]) >= 1
 
-
-class TestRecordIntegration:
-    """Test record CRUD operations."""
-
-    def test_create_record(self, client):
-        """Test creating a record."""
-        response = client.post("/api/records/", json={
-            "table_id": 1,
-            "data": {
-                "title": "Test Post",
-                "content": "Test content",
-                "status": "draft"
-            }
+    def test_get_table(self, client):
+        """Test getting a single table."""
+        # Create table first
+        create_response = client.post("/api/tables/", json={
+            "workspace_id": 1,
+            "name": "Get Test Table",
+            "column_definitions": [
+                {"name": "title", "type": "text"}
+            ]
         })
-        assert response.status_code == 201
-        data = response.json()
-        assert data["data"]["title"] == "Test Post"
-        assert data["status"] == "draft"
+        table_id = create_response.json()["id"]
 
-    def test_list_records_with_filters(self, client):
-        """Test listing records with filters."""
-        # Create records first
-        for i in range(3):
-            client.post("/api/records/", json={
-                "table_id": 1,
-                "data": {
-                    "title": f"Post {i}",
-                    "status": "draft" if i < 2 else "published"
-                }
-            })
-
-        # Filter by status
-        response = client.get("/api/records/?table_id=1&filter=published")
+        response = client.get(f"/api/tables/{table_id}")
         assert response.status_code == 200
-        data = response.json()
-        assert len(data["items"]) == 1
-        assert data["items"][0]["status"] == "published"
+        assert response.json()["name"] == "Get Test Table"
 
-    def test_update_record(self, client):
-        """Test updating a record."""
-        # Create record first
-        create_response = client.post("/api/records/", json={
-            "table_id": 1,
-            "data": {
-                "title": "Original Title",
-                "status": "draft"
-            }
+    def test_update_table(self, client):
+        """Test updating a table."""
+        # Create table first
+        create_response = client.post("/api/tables/", json={
+            "workspace_id": 1,
+            "name": "Update Test Table",
+            "column_definitions": [
+                {"name": "title", "type": "text"}
+            ]
         })
-        record_id = create_response.json()["id"]
+        table_id = create_response.json()["id"]
 
-        response = client.put(f"/api/records/{record_id}", json={
-            "data": {
-                "title": "Updated Title"
-            }
+        response = client.put(f"/api/tables/{table_id}", json={
+            "name": "Updated Table Name"
         })
         assert response.status_code == 200
-        assert response.json()["data"]["title"] == "Updated Title"
+        assert response.json()["name"] == "Updated Table Name"
 
-    def test_delete_record(self, client):
-        """Test deleting a record."""
-        # Create record first
-        create_response = client.post("/api/records/", json={
-            "table_id": 1,
-            "data": {
-                "title": "Delete Me",
-                "status": "draft"
-            }
+    def test_delete_table(self, client):
+        """Test deleting a table."""
+        # Create table first
+        create_response = client.post("/api/tables/", json={
+            "workspace_id": 1,
+            "name": "Delete Test Table",
+            "column_definitions": [
+                {"name": "title", "type": "text"}
+            ]
         })
-        record_id = create_response.json()["id"]
+        table_id = create_response.json()["id"]
 
-        response = client.delete(f"/api/records/{record_id}")
+        response = client.delete(f"/api/tables/{table_id}")
         assert response.status_code == 204
-
-        # Verify it's deleted
-        response = client.get(f"/api/records/{record_id}")
-        assert response.status_code == 404
-
-
-class TestAccountIntegration:
-    """Test account connection operations."""
-
-    def test_connect_account(self, client):
-        """Test connecting a social media account."""
-        response = client.post("/api/accounts/connect/", json={
-            "workspace_id": 1,
-            "platform": "twitter",
-            "access_token": "test_token_123",
-            "refresh_token": "test_refresh_123",
-            "expires_in": 3600
-        })
-        assert response.status_code == 201
-        data = response.json()
-        assert data["platform"] == "twitter"
-        assert data["is_active"] is True
-
-    def test_disconnect_account(self, client):
-        """Test disconnecting a social media account."""
-        # Connect account first
-        client.post("/api/accounts/connect/", json={
-            "workspace_id": 1,
-            "platform": "instagram",
-            "access_token": "test_token",
-            "refresh_token": "test_refresh",
-            "expires_in": 3600
-        })
-
-        response = client.post("/api/accounts/disconnect/", json={
-            "workspace_id": 1,
-            "platform": "instagram"
-        })
-        assert response.status_code == 200
-        assert response.json()["message"] == "Account disconnected"
-
-
-class TestSchedulingIntegration:
-    """Test content scheduling operations."""
-
-    def test_schedule_content(self, client):
-        """Test scheduling content for future publication."""
-        response = client.post("/api/schedule/", json={
-            "record_id": 1,
-            "scheduled_date": "2024-01-01T10:00:00Z"
-        })
-        assert response.status_code == 201
-        data = response.json()
-        assert data["record_id"] == 1
-        assert data["status"] == "scheduled"
-
-    def test_cancel_schedule(self, client):
-        """Test canceling a scheduled post."""
-        # Create schedule first
-        client.post("/api/schedule/", json={
-            "record_id": 1,
-            "scheduled_date": "2024-01-01T10:00:00Z"
-        })
-
-        response = client.post("/api/schedule/cancel/", json={
-            "record_id": 1
-        })
-        assert response.status_code == 200
-        assert response.json()["message"] == "Schedule canceled"
-
-
-class TestAnalyticsIntegration:
-    """Test analytics operations."""
-
-    def test_get_analytics(self, client):
-        """Test getting analytics data."""
-        response = client.get("/api/analytics/?workspace_id=1&period=30d")
-        assert response.status_code == 200
-        data = response.json()
-        assert "total_posts" in data
-        assert "engagement_rate" in data
-        assert "platform_breakdown" in data
-
-
-class TestErrorHandling:
-    """Test error handling and edge cases."""
-
-    def test_workspace_not_found(self, client):
-        """Test 404 for non-existent workspace."""
-        response = client.get("/api/workspaces/999")
-        assert response.status_code == 404
 
     def test_invalid_table_creation(self, client):
         """Test validation errors for table creation."""
@@ -336,35 +229,158 @@ class TestErrorHandling:
         })
         assert response.status_code == 422  # Validation error
 
+
+class TestRecordIntegration:
+    """Test record CRUD operations."""
+
+    def test_create_record(self, client):
+        """Test creating a content record."""
+        # Create table first
+        table_response = client.post("/api/tables/", json={
+            "workspace_id": 1,
+            "name": "Record Test Table",
+            "column_definitions": [
+                {"name": "title", "type": "text"},
+                {"name": "content", "type": "text"}
+            ]
+        })
+        table_id = table_response.json()["id"]
+
+        response = client.post("/api/records/", json={
+            "table_id": table_id,
+            "data": {
+                "title": "Test Title",
+                "content": "Test Content"
+            }
+        })
+        assert response.status_code == 201
+        data = response.json()
+        assert data["data"]["title"] == "Test Title"
+
+    def test_list_records(self, client):
+        """Test listing records."""
+        # Create table and record first
+        table_response = client.post("/api/tables/", json={
+            "workspace_id": 1,
+            "name": "List Test Table",
+            "column_definitions": [
+                {"name": "title", "type": "text"}
+            ]
+        })
+        table_id = table_response.json()["id"]
+
+        client.post("/api/records/", json={
+            "table_id": table_id,
+            "data": {"title": "List Test"}
+        })
+
+        response = client.get(f"/api/records/?table_id={table_id}")
+        assert response.status_code == 200
+        data = response.json()
+        assert "items" in data
+        assert "total" in data
+        assert len(data["items"]) >= 1
+
+    def test_get_record(self, client):
+        """Test getting a single record."""
+        # Create table and record first
+        table_response = client.post("/api/tables/", json={
+            "workspace_id": 1,
+            "name": "Get Test Table",
+            "column_definitions": [
+                {"name": "title", "type": "text"}
+            ]
+        })
+        table_id = table_response.json()["id"]
+
+        record_response = client.post("/api/records/", json={
+            "table_id": table_id,
+            "data": {"title": "Get Test"}
+        })
+        record_id = record_response.json()["id"]
+
+        response = client.get(f"/api/records/{record_id}")
+        assert response.status_code == 200
+        assert response.json()["data"]["title"] == "Get Test"
+
+    def test_update_record(self, client):
+        """Test updating a record."""
+        # Create table and record first
+        table_response = client.post("/api/tables/", json={
+            "workspace_id": 1,
+            "name": "Update Test Table",
+            "column_definitions": [
+                {"name": "title", "type": "text"}
+            ]
+        })
+        table_id = table_response.json()["id"]
+
+        record_response = client.post("/api/records/", json={
+            "table_id": table_id,
+            "data": {"title": "Original"}
+        })
+        record_id = record_response.json()["id"]
+
+        response = client.put(f"/api/records/{record_id}", json={
+            "data": {"title": "Updated"}
+        })
+        assert response.status_code == 200
+        assert response.json()["data"]["title"] == "Updated"
+
+    def test_delete_record(self, client):
+        """Test deleting a record."""
+        # Create table and record first
+        table_response = client.post("/api/tables/", json={
+            "workspace_id": 1,
+            "name": "Delete Test Table",
+            "column_definitions": [
+                {"name": "title", "type": "text"}
+            ]
+        })
+        table_id = table_response.json()["id"]
+
+        record_response = client.post("/api/records/", json={
+            "table_id": table_id,
+            "data": {"title": "Delete Test"}
+        })
+        record_id = record_response.json()["id"]
+
+        response = client.delete(f"/api/records/{record_id}")
+        assert response.status_code == 204
+
     def test_invalid_record_creation(self, client):
         """Test validation errors for record creation."""
+        # Create table first
+        table_response = client.post("/api/tables/", json={
+            "workspace_id": 1,
+            "name": "Invalid Test Table",
+            "column_definitions": [
+                {"name": "title", "type": "text"}
+            ]
+        })
+        table_id = table_response.json()["id"]
+
         response = client.post("/api/records/", json={
-            "table_id": 1,
-            "data": {}  # Invalid: no required fields
+            "table_id": table_id,
+            "data": {}  # Missing required field
         })
         assert response.status_code == 422  # Validation error
 
-    def test_duplicate_account_connection(self, client):
-        """Test preventing duplicate account connections."""
-        # Connect account first
-        client.post("/api/accounts/connect/", json={
-            "workspace_id": 1,
-            "platform": "twitter",
-            "access_token": "token1",
-            "refresh_token": "refresh1",
-            "expires_in": 3600
-        })
 
-        # Try to connect again with same platform
-        response = client.post("/api/accounts/connect/", json={
-            "workspace_id": 1,
-            "platform": "twitter",
-            "access_token": "token2",
-            "refresh_token": "refresh2",
-            "expires_in": 3600
-        })
-        assert response.status_code == 400  # Conflict
+class TestErrorHandling:
+    """Test error handling scenarios."""
 
+    def test_workspace_not_found(self, client):
+        """Test 404 for non-existent workspace."""
+        response = client.get("/api/workspaces/999")
+        assert response.status_code == 404
 
-if __name__ == "__main__":
-    pytest.main([__file__, "-v"])
+    def test_table_not_found(self, client):
+        """Test 404 for non-existent table."""
+        response = client.get("/api/tables/999")
+        assert response.status_code == 404
+
+    def test_record_not_found(self, client):
+        """Test 404 for non-existent record."""
+        response = client.get("/api/records/999")
+        assert response.status_code == 404

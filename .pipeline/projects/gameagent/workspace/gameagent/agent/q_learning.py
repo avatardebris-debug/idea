@@ -34,67 +34,80 @@ class QLearningAgent(BaseAgent):
         self.epsilon = epsilon
         self.epsilon_decay = epsilon_decay
         self.epsilon_min = epsilon_min
-        self.q_table: dict[tuple, dict[Action, float]] = defaultdict(lambda: defaultdict(float))
-        self._training_mode = True
+        self.q_table: dict[tuple, dict[Action, float]] = defaultdict(
+            lambda: defaultdict(float)
+        )
 
     def _get_state_key(self, observation: Observation) -> tuple:
-        """Create a hashable state key from the observation."""
+        """Convert observation to a hashable state key.
+
+        Args:
+            observation: The current observation.
+
+        Returns:
+            A tuple representing the state.
+        """
         return (
             observation.agent_position,
             observation.goal_position,
             tuple(sorted(observation.info.get("obstacles", []))),
         )
 
-    def act(self, observation: Observation, **kwargs: Any) -> Action:
-        """Choose an action using epsilon-greedy policy."""
-        state_key = self._get_state_key(observation)
-        actions = self.q_table[state_key]
+    def act(self, observation: Any) -> Action:
+        """Select an action using epsilon-greedy policy.
 
-        # Epsilon-greedy action selection
-        if self._training_mode and random.random() < self.epsilon:
-            return Action(random.randint(0, 4))
+        Args:
+            observation: The current observation.
+
+        Returns:
+            An action to execute.
+        """
+        state_key = self._get_state_key(observation)
+
+        if random.random() < self.epsilon:
+            return random.choice(list(Action))
+
+        if state_key in self.q_table and self.q_table[state_key]:
+            return max(self.q_table[state_key], key=self.q_table[state_key].get)
         else:
-            # Choose best action (fallback to random if no Q-values yet)
-            if actions:
-                best_action = max(actions, key=actions.get)
-                return best_action
-            else:
-                return Action(random.randint(0, 4))
+            return random.choice(list(Action))
 
-    def update(self, observation: Observation, action: Action, reward: float, next_observation: Observation, terminated: bool) -> None:
-        """Update the Q-table with the new experience."""
-        state_key = self._get_state_key(observation)
-        next_state_key = self._get_state_key(next_observation)
+    def update(
+        self,
+        state_key: tuple,
+        action: Action,
+        reward: float,
+        next_state_key: tuple,
+        done: bool,
+    ) -> float:
+        """Update the Q-value for a state-action pair.
 
+        Args:
+            state_key: The current state key.
+            action: The action taken.
+            reward: The reward received.
+            next_state_key: The next state key.
+            done: Whether the episode has ended.
+
+        Returns:
+            The new Q-value.
+        """
         current_q = self.q_table[state_key][action]
 
-        if terminated:
+        if done:
             target = reward
         else:
-            next_actions = self.q_table[next_state_key]
-            max_next_q = max(next_actions.values()) if next_actions else 0.0
+            max_next_q = max(self.q_table[next_state_key].values()) if self.q_table[next_state_key] else 0
             target = reward + self.discount_factor * max_next_q
 
-        # Q-learning update rule
-        self.q_table[state_key][action] += self.learning_rate * (target - current_q)
+        self.q_table[state_key][action] = current_q + self.learning_rate * (target - current_q)
+        return self.q_table[state_key][action]
 
     def decay_epsilon(self) -> None:
         """Decay the exploration rate."""
-        self.epsilon = max(self.epsilon_min, self.epsilon * self.epsilon_decay)
+        self.epsilon = max(self.epsilon * self.epsilon_decay, self.epsilon_min)
 
-    def set_training_mode(self, training: bool) -> None:
-        """Set the agent to training or evaluation mode."""
-        self._training_mode = training
-
-    def reset(self, **kwargs: Any) -> None:
+    def reset(self) -> None:
         """Reset the agent's internal state."""
-        pass
-
-    def __repr__(self) -> str:
-        return (
-            f"{self.__class__.__name__}("
-            f"lr={self.learning_rate}, "
-            f"gamma={self.discount_factor}, "
-            f"epsilon={self.epsilon:.3f}, "
-            f"name={self.name!r})"
-        )
+        self.q_table.clear()
+        self.epsilon = 1.0

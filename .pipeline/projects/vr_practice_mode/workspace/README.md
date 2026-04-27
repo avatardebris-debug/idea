@@ -1,179 +1,332 @@
 # Thronglets VR Practice Mode
 
-A VR practice environment where thronglets represent infrastructure components. Built with A-Frame for cross-platform VR/AR/desktop support.
+A virtual reality simulation environment for monitoring and managing Thronglets. This project provides a comprehensive VR interface for visualizing, interacting with, and managing Thronglets in a simulated 3D environment.
 
-## Quick Start
+## Features
 
-### Desktop Browser (Chrome, Firefox, Edge)
+- **VR Simulation Environment**: Real-time 3D visualization of Thronglets and their connections
+- **Interactive Interface**: Select, inspect, and interact with Thronglets in VR space
+- **Health Monitoring**: Visual health indicators and proximity alerts for critical Thronglets
+- **Connection Visualization**: Display and manage connections between Thronglets
+- **Configuration Management**: Load and apply configuration files for custom scenarios
+- **Keyboard Controls**: Intuitive keyboard shortcuts for navigation and interaction
+- **Debug Mode**: Comprehensive debugging tools for development and troubleshooting
+- **Test Suite**: Comprehensive test coverage for all components
 
-1. Open a terminal in this directory
-2. Start a local HTTP server:
+## Installation
+
+### Prerequisites
+
+- Node.js >= 14.0.0
+- npm or yarn
+
+### Setup
+
+1. Clone the repository:
+   ```bash
+   git clone <repository-url>
+   cd vr_practice_mode
+   ```
+
+2. Install dependencies:
+   ```bash
+   npm install
+   ```
+
+3. Run the test suite:
+   ```bash
+   npm test
+   ```
+
+## Usage
+
+### Starting the VR Practice Mode
 
 ```bash
-# Python 3
-python3 -m http.server 8080
-
-# Node.js
-npx serve .
-
-# Or just open vr_practice.html directly in your browser
+npm start
 ```
 
-3. Navigate to `http://localhost:8080`
+### Development Mode
 
-### Meta Quest (VR Mode)
-
-1. Upload the entire `vr_practice_mode/workspace/` directory to your Quest's web server, or use a local network server accessible from the Quest
-2. Open the Meta Quest Browser
-3. Navigate to the URL (e.g., `http://your-server-ip:8080`)
-4. Click the VR button (glasses icon) in the bottom-right corner
-5. Use controller triggers to teleport and joysticks to move
-
-### WebXR-Compatible Browsers
-
-- **Desktop**: Chrome 79+, Firefox 98+, Edge 79+
-- **Mobile**: Chrome for Android, Samsung Internet
-- **VR**: Meta Quest Browser, Pico Browser
-
-## Controls
-
-### Desktop Mode
-| Action | Control |
-|--------|---------|
-| Move | `W` `A` `S` `D` keys |
-| Look around | Mouse (click to capture) |
-| Teleport | Click on the ground |
-| Release cursor | `ESC` |
-
-### VR Mode (Meta Quest)
-| Action | Control |
-|--------|---------|
-| Move | Left joystick |
-| Teleport | Right trigger (point + release) |
-| Look around | Head movement |
-
-## Thronglets
-
-| Name | Role | Health | Color |
-|------|------|--------|-------|
-| Arch | System Architect | 🟢 Healthy | #4fc3f7 |
-| Deploy | CI/CD Pipeline | 🟡 Warning | #81c784 |
-| Data | Database Server | 🔴 Critical | #ffb74d |
-| Cache | Redis Cache | 🟢 Healthy | #e57373 |
-| Monitor | Observability Stack | 🟢 Healthy | #ba68c8 |
-
-## Verification Checklist
-
-### Desktop Browser Tests
-
-- [ ] **Load time**: Page loads in under 3 seconds (check browser DevTools Network tab)
-- [ ] **5 avatars visible**: All 5 thronglets appear at their configured positions
-- [ ] **Distinct colors**: Each thronglet has a unique, clearly visible color
-- [ ] **Nameplates readable**: Names, roles, and health status are visible and readable
-- [ ] **Halos visible**: Status halos (green/yellow/red) are visible above each thronglet
-- [ ] **Halos rotating**: Halos rotate continuously (observe for 5+ seconds)
-- [ ] **Body sway**: Thronglets gently bob up and down
-- [ ] **Mouse look**: Click and drag to look around the world
-- [ ] **WASD movement**: Press W/A/S/D to move the camera
-- [ ] **Click teleport**: Click on the ground to teleport the camera
-- [ ] **ESC release**: Press ESC to release mouse capture
-- [ ] **No console errors**: Open DevTools Console — no errors or warnings
-
-### VR Mode Tests (Meta Quest)
-
-- [ ] **VR session starts**: Clicking the VR button enters immersive mode
-- [ ] **All thronglets visible**: All 5 avatars are visible in VR
-- [ ] **Teleportation works**: Point controller at ground, press trigger to teleport
-- [ ] **Teleport ray visible**: A blue ray extends from the controller
-- [ ] **Teleport target visible**: A ring appears where you'll teleport to
-- [ ] **Joystick movement**: Left joystick moves the camera rig
-- [ ] **Nameplates readable**: Names are readable from various distances
-- [ ] **Halos visible**: Status halos are visible and rotating
-- [ ] **No motion sickness**: No excessive nausea after 2+ minutes of use
-- [ ] **Performance**: Stable 72+ FPS (check Quest Developer Hub)
-
-### Cross-Platform Tests
-
-- [ ] **Responsive**: Works on different screen sizes (desktop, tablet, phone)
-- [ ] **No layout issues**: No overlapping elements or clipped content
-- [ ] **Config loads**: All thronglet data loads from vr_config.json
-- [ ] **Connections visible**: Dashed lines connect thronglets per config relationships
-- [ ] **Fog effect**: Distant thronglets fade into the fog naturally
-- [ ] **Lighting**: No overexposed or completely dark areas
-
-## File Structure
-
+```bash
+npm run dev
 ```
-vr_practice_mode/
-├── phases/
-│   └── phase_1/
-│       ├── spec.md          # Phase specification
-│       └── tasks.md         # Task checklist
-├── state/
-│   ├── current_idea.json    # Current project state
-│   ├── current_phase.json   # Phase tracking
-│   └── master_plan.md       # Overall project plan
-└── workspace/
-    ├── vr_config.json       # Thronglet configuration (source of truth)
-    ├── vr_practice.html     # Main HTML file
-    ├── vr_practice.js       # Application logic
-    └── README.md            # This file
+
+### Running Tests
+
+```bash
+npm test
 ```
+
+#### Test Options
+
+- `npm run test:watch` - Run tests in watch mode
+- `npm run test:verbose` - Run tests with verbose output
+- `npm run test:coverage` - Run tests with coverage report
+
+## Configuration
+
+### Configuration File Format
+
+Create a `config.json` file in the project root:
+
+```json
+{
+  "thronglets": [
+    {
+      "id": "1",
+      "name": "Agent Alpha",
+      "role": "agent",
+      "color": "#ff0000",
+      "position": { "x": 0, "y": 0, "z": 0 },
+      "health": "healthy",
+      "mood": "neutral",
+      "token_count": 100,
+      "uptime": 3600,
+      "last_seen": "2024-01-01T00:00:00Z"
+    }
+  ],
+  "connections": [
+    {
+      "from": "1",
+      "to": "2",
+      "type": "communication",
+      "color": "#0000ff",
+      "label": "Alpha-Beta Link"
+    }
+  ]
+}
+```
+
+### Configuration Options
+
+#### Thronglet Properties
+
+- `id` (string, required): Unique identifier for the Thronglet
+- `name` (string, required): Display name of the Thronglet
+- `role` (string): Role of the Thronglet (e.g., "agent", "controller")
+- `color` (string): Hex color code for the Thronglet
+- `position` (object): 3D position coordinates
+  - `x` (number): X coordinate
+  - `y` (number): Y coordinate
+  - `z` (number): Z coordinate
+- `health` (string): Health status ("healthy", "warning", "critical")
+- `mood` (string): Current mood of the Thronglet
+- `token_count` (number): Number of tokens associated with the Thronglet
+- `uptime` (number): Uptime in seconds
+- `last_seen` (string): ISO 8601 timestamp of last activity
+
+#### Connection Properties
+
+- `from` (string): ID of the source Thronglet
+- `to` (string): ID of the destination Thronglet
+- `type` (string): Type of connection (e.g., "communication", "data_transfer")
+- `color` (string): Hex color code for the connection line
+- `label` (string): Display label for the connection
+
+## Keyboard Controls
+
+| Key | Action |
+|-----|--------|
+| `ESC` | Deselect current Thronglet |
+| `1-9` | Teleport to Thronglet by index |
+| `N` | Toggle nameplates visibility |
+| `C` | Toggle connections visibility |
+| `H` | Toggle health halos visibility |
+| `D` | Toggle debug mode |
+
+## API Reference
+
+### VRState
+
+Global state management object.
+
+```javascript
+VRState = {
+  thronglets: [],
+  connections: [],
+  selectedThronglet: null,
+  settings: {
+    showNameplates: true,
+    showConnections: true,
+    showHealthHalos: true,
+    debugMode: false
+  },
+  config: null,
+  practiceMode: null
+}
+```
+
+### Thronglet Class
+
+Represents a Thronglet in the VR environment.
+
+```javascript
+class Thronglet {
+  constructor(data)
+  getHealthColor(): string
+  getHealthBadge(): string
+  updateTimestamp(): void
+  toJSON(): object
+}
+```
+
+### Connection Class
+
+Represents a connection between two Thronglets.
+
+```javascript
+class Connection {
+  constructor(data, fromThronglet, toThronglet)
+  toJSON(): object
+}
+```
+
+### VRPracticeMode Class
+
+Main class for managing the VR practice mode.
+
+```javascript
+class VRPracticeMode {
+  constructor()
+  init(): void
+  loadConfiguration(): void
+  createThronglets(): void
+  createConnections(): void
+  selectThronglet(id: string): void
+  deselectThronglet(): void
+  teleportToThronglet(index: number): void
+  toggleNameplates(): void
+  toggleConnections(): void
+  toggleHealthHalos(): void
+  toggleDebug(): void
+  handleKeyboard(event: KeyboardEvent): void
+  updateSimulation(): void
+  checkProximityAlerts(): void
+}
+```
+
+### Global Functions
+
+```javascript
+initThrongletsVR(): void
+closeDetailPanel(): void
+toggleNameplatesVisibility(): void
+toggleConnectionsVisibility(): void
+toggleHealthHalosVisibility(): void
+toggleDebugMode(): void
+teleportToThronglet(index: number): void
+deselectThronglet(): void
+handleResize(): void
+```
+
+## Testing
+
+### Test Coverage
+
+The test suite covers:
+
+- Thronglet class instantiation and methods
+- Connection class instantiation and methods
+- VRState initialization and state management
+- VRPracticeMode initialization and methods
+- Global functions
+- Edge cases (empty configurations, missing data, invalid inputs)
+- Integration tests (full workflow scenarios)
+
+### Running Tests
+
+```bash
+npm test
+```
+
+### Test Output
+
+Tests output detailed results including:
+
+- Test name and status (pass/fail)
+- Expected vs actual values for failed tests
+- Summary statistics (total, passed, failed, success rate)
+- Detailed failure information
 
 ## Architecture
 
-### vr_config.json
-The single source of truth for the VR world. Defines:
-- World settings (ground size, sky color, fog)
-- Thronglet definitions (position, color, health, personality)
-- Relationships between thronglets (connection lines)
+### Component Structure
 
-### vr_practice.html
-A-Frame scene with:
-- A-Frame 1.6.0 renderer with WebXR support
-- Procedural grid texture (canvas-generated)
-- Multi-source lighting (ambient, directional, hemisphere)
-- Camera rig with WASD controls and look controls
-- Loading overlay and info panel
+```
+vr_practice_mode/
+├── vr_practice.js          # Main application logic
+├── vr_practice_runner.js   # Test runner
+├── package.json            # Project configuration
+└── README.md               # Documentation
+```
 
-### vr_practice.js
-Application logic:
-- Config loading and parsing
-- Grid texture generation (canvas API)
-- Thronglet avatar creation (capsule body, sphere head, halo, nameplate)
-- Connection line rendering (dynamic positioning)
-- VR camera rig setup
-- Teleportation (desktop click + VR controller)
-- Animation loop (halo rotation, body sway, billboarding, health pulsing)
+### Data Flow
+
+1. **Initialization**: VRState is initialized with default values
+2. **Configuration Loading**: Configuration file is loaded and parsed
+3. **Thronglet Creation**: Thronglets are created from configuration data
+4. **Connection Creation**: Connections are established between Thronglets
+5. **Simulation Loop**: Thronglets are updated and proximity alerts are checked
+6. **User Interaction**: Keyboard events trigger various actions
+
+### State Management
+
+The VRState object serves as the central state management system:
+
+- **thronglets**: Array of Thronglet instances
+- **connections**: Array of Connection instances
+- **selectedThronglet**: Currently selected Thronglet
+- **settings**: User preferences and display options
+- **config**: Loaded configuration data
+- **practiceMode**: VRPracticeMode instance
 
 ## Troubleshooting
 
-### "vr_config.json not found"
-- Make sure you're serving files via HTTP (not opening the file directly)
-- Check that vr_config.json is in the same directory as vr_practice.html
+### Common Issues
 
-### "WebXR not supported"
-- Use Chrome 79+ or Firefox 98+
-- For VR, use a Meta Quest browser or a WebXR-compatible headset
+#### Configuration file not found
 
-### "Thronglets not visible"
-- Check browser DevTools Console for errors
-- Verify vr_config.json is valid JSON
-- Ensure the HTTP server is running
+- Ensure `config.json` exists in the project root
+- Check file permissions
+- Verify JSON syntax is valid
 
-### "Poor VR performance"
-- Close other browser tabs
-- Reduce fog density in vr_config.json
-- Check for console errors that may indicate rendering issues
+#### Thronglets not appearing
 
-## Dependencies
+- Check configuration file for valid thronglet data
+- Verify position coordinates are valid numbers
+- Ensure Thronglet class is properly instantiated
 
-- **A-Frame 1.6.0**: 3D/VR framework (loaded from CDN)
-- **A-Frame Extras 7.2.0**: Additional components (loaded from CDN)
-- **Three.js**: 3D engine (bundled with A-Frame)
+#### Connections not displaying
 
-No build step or package manager required.
+- Verify connection `from` and `to` IDs match existing Thronglet IDs
+- Check connection color is a valid hex code
+- Ensure `showConnections` setting is enabled
+
+#### Keyboard controls not working
+
+- Ensure the application has focus
+- Check browser console for errors
+- Verify keyboard event listeners are properly attached
+
+## Contributing
+
+1. Fork the repository
+2. Create a feature branch
+3. Make your changes
+4. Run tests to ensure everything passes
+5. Submit a pull request
 
 ## License
 
-MIT
+MIT License - See LICENSE file for details
+
+## Support
+
+For issues and questions, please open an issue on the repository.
+
+## Acknowledgments
+
+- Thronglets Team
+- VR Community
+- Open Source Contributors

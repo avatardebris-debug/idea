@@ -3,7 +3,8 @@ pipeline/agents/reviewer.py
 Reviewer agent — performs detailed line-by-line code review.
 
 Receives: workspace + validation report after Validator passes
-Produces: review.md, sends result to Manager
+Produces: review.md, writes verdict to current_idea.json for deterministic
+          routing by the runner's _tick_project() function.
 """
 
 from __future__ import annotations
@@ -114,6 +115,15 @@ class ReviewerAgent(AgentProcess):
         # and makes the routing decision deterministically.
         try:
             idea_state = self.read_json_state("state/current_idea.json")
+
+            # Guard: don't overwrite terminal states — the runner may have
+            # force-completed this project while the reviewer was still running
+            if idea_state.get("status") in ("complete", "stalled", "budget_exceeded"):
+                return AgentOutput(
+                    success=True, answer=result.answer, outgoing=[],
+                    tokens_used=result.tokens_used, steps_used=result.steps_used,
+                )
+
             idea_state["review_result"] = {
                 "blocking_bugs": blocking_count,
                 "review_path": review_path,

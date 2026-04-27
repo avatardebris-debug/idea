@@ -1,0 +1,6 @@
+{
+  "title": "Markdown to HTML Converter",
+  "description": "Build a Python CLI that converts a markdown file to a standalone HTML file with basic CSS styling. Support headers, bold, italic, code blocks, and links. Include unit tests for each element type.",
+  "status": "phase_1_executing",
+  "total_phases": 1
+}

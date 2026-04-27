@@ -126,146 +126,142 @@
     }
     #hover-indicator.visible {
       opacity: 1;
-      transform: translate(-50%, -50%) scale(1.2);
+      animation: pulse 1.5s ease-in-out infinite;
     }
-    #hover-indicator::after {
-      content: '';
-      position: absolute;
-      top: 50%; left: 50%; transform: translate(-50%, -50%);
-      width: 4px; height: 4px;
-      background: #4fc3f7;
-      border-radius: 50%;
+    @keyframes pulse {
+      0%, 100% { transform: translate(-50%, -50%) scale(1); }
+      50% { transform: translate(-50%, -50%) scale(1.2); }
+    }
+
+    /* VR Controls */
+    #vr-controls {
+      position: fixed; top: 20px; left: 20px;
+      background: rgba(15, 15, 35, 0.9);
+      color: #4fc3f7;
+      padding: 12px 20px;
+      border-radius: 8px;
+      font-size: 0.85rem;
+      z-index: 100;
+      display: none;
+    }
+    #desktop-controls {
+      position: fixed; top: 20px; left: 20px;
+      background: rgba(15, 15, 35, 0.9);
+      color: #4fc3f7;
+      padding: 12px 20px;
+      border-radius: 8px;
+      font-size: 0.85rem;
+      z-index: 100;
+    }
+    #desktop-controls kbd {
+      background: rgba(79, 195, 247, 0.15);
+      padding: 2px 6px; border-radius: 4px;
+      font-family: monospace; font-size: 0.8rem;
     }
   </style>
 </head>
 <body>
 
-  <!-- Loading overlay -->
+  <!-- Loading Overlay -->
   <div id="loading-overlay">
-    <h1>🌐 Thronglets VR</h1>
+    <h1>Thronglets VR Practice Mode</h1>
     <div class="loader"></div>
-    <p style="color:#666; margin-top:1rem;">Loading world…</p>
+    <p style="color: #9e9e9e; margin-top: 1rem;">Loading VR environment...</p>
   </div>
 
-  <!-- Info panel -->
+  <!-- Info Panel -->
   <div id="info-panel">
-    <strong>Controls:</strong>
-    <span id="desktop-controls">
-      <kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> Move ·
-      Mouse Look · <kbd>Click</kbd> Teleport
-    </span>
-    <span id="vr-controls" style="display:none;">
-      <kbd>Trigger</kbd> Teleport · <kbd>Joystick</kbd> Move
-    </span>
+    <span>Use <kbd>WASD</kbd> to move, <kbd>Mouse</kbd> to look, <kbd>Click</kbd> to teleport</span>
+  </div>
+
+  <!-- VR Controls -->
+  <div id="vr-controls">
+    <span>VR Mode Active</span>
+  </div>
+
+  <!-- Desktop Controls -->
+  <div id="desktop-controls">
+    <span>Desktop Mode</span>
   </div>
 
   <!-- Detail Panel -->
   <div id="detail-panel">
     <div class="panel-header">
-      <div class="avatar-icon" id="panel-avatar-icon"></div>
+      <div class="avatar-icon" id="panel-avatar-icon">🤖</div>
       <div>
-        <h2 id="panel-name">—</h2>
-        <div class="role" id="panel-role">—</div>
+        <h2 id="panel-name">Unknown</h2>
+        <div class="role" id="panel-role">Unknown Role</div>
       </div>
     </div>
     <div class="panel-body">
       <div class="stat-row">
         <span class="stat-label">Health</span>
-        <span class="stat-value" id="panel-health">—</span>
+        <span class="stat-value" id="panel-health">Unknown</span>
       </div>
       <div class="stat-row">
         <span class="stat-label">Role</span>
-        <span class="stat-value info" id="panel-role-detail">—</span>
+        <span class="stat-value info" id="panel-role-detail">Unknown</span>
       </div>
       <div class="stat-row">
         <span class="stat-label">Uptime</span>
-        <span class="stat-value" id="panel-uptime">—</span>
+        <span class="stat-value" id="panel-uptime">N/A</span>
       </div>
       <div class="stat-row">
         <span class="stat-label">Last Seen</span>
-        <span class="stat-value" id="panel-last-seen">—</span>
+        <span class="stat-value" id="panel-last-seen">N/A</span>
       </div>
       <div class="stat-row">
         <span class="stat-label">Location</span>
-        <span class="stat-value info" id="panel-location">—</span>
+        <span class="stat-value" id="panel-location">(0, 0)</span>
       </div>
     </div>
   </div>
 
   <!-- Proximity Alert -->
-  <div id="proximity-alert">⚠️ Thronglet in Critical State</div>
+  <div id="proximity-alert"></div>
 
   <!-- Hover Indicator -->
   <div id="hover-indicator"></div>
 
   <!-- A-Frame Scene -->
-  <a-scene
-    id="scene"
-    vr-mode-ui="enabled: true"
-    renderer="antialias: true; alpha: true; colorManagement: true; physicallyCorrectLights: true"
-    loading-screen="enabled: false"
-    fog="type: exponential; color: #1a1a2e; density: 0.03"
-  >
-
+  <a-scene id="scene" embedded>
     <!-- Assets -->
     <a-assets>
-      <canvas id="grid-canvas" width="512" height="512"></canvas>
-      <a-mixin id="grid-texture" material="src: #grid-canvas; repeat: 20 20; transparent: true; opacity: 0.6"></a-mixin>
+      <img id="grid-texture" src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='256' height='256'%3E%3Crect width='256' height='256' fill='%231a1a2e'/%3E%3Cg stroke='rgba(79,195,247,0.3)' stroke-width='2'%3E%3Cpath d='M0 0h256v256H0z' fill='none'/%3E%3Cpath d='M0 0h256v256H0z' fill='none'/%3E%3C/g%3E%3C/svg%3E" />
     </a-assets>
 
-    <!-- Camera rig -->
-    <a-entity id="camera-rig" position="0 1.6 5">
-      <a-camera
-        id="camera"
-        position="0 0 0"
-        look-controls="pointerLockEnabled: false"
-        wasd-controls="enabled: true"
-        fov="70"
-        far="100"
-      >
-        <!-- Reticle for teleportation -->
-        <a-entity
-          id="reticle"
-          geometry="primitive: ring; radiusInner: 0.05; radiusOuter: 0.07"
-          material="color: #4fc3f7; opacity: 0.8; shader: flat"
-          position="0 0 -2"
-          rotation="-90 0 0"
-          visible="false"
-        ></a-entity>
-      </a-camera>
+    <!-- Camera -->
+    <a-entity id="camera" position="0 1.6 0"
+              look-controls="mouseEnabled: true"
+              wasd-controls="enabled: true"
+              raycaster="objects: .thronglet-avatar; far: 10">
     </a-entity>
 
-    <!-- Lighting -->
-    <a-entity light="type: ambient; color: #444; intensity: 0.4"></a-entity>
-    <a-entity light="type: directional; color: #fff; intensity: 0.8; castShadow: true" position="-5 10 5"></a-entity>
-    <a-entity light="type: hemisphere; color: #4fc3f7; groundColor: #1a1a2e; intensity: 0.3"></a-entity>
+    <!-- Ground Plane -->
+    <a-plane id="ground"
+             rotation="-90 0 0"
+             width="40" height="40"
+             color="#1a1a2e"
+             src="#grid-texture"
+             mixin="grid-texture">
+    </a-plane>
 
-    <!-- Skybox (gradient) -->
-    <a-sky id="skybox" color="#0a0a1a" radius="100"></a-sky>
-
-    <!-- Ground plane with grid -->
-    <a-entity id="ground" position="0 0 0">
-      <a-plane
-        id="ground-plane"
-        width="40" height="40"
-        rotation="-90 0 0"
-        mixin="grid-texture"
-        material="color: #1a1a2e; side: double"
-      ></a-plane>
-      <!-- Grid lines overlay -->
-      <a-entity id="grid-lines" position="0 0.01 0" rotation="-90 0 0">
-        <!-- Generated via JS -->
-      </a-entity>
-    </a-entity>
-
-    <!-- Thronglets container (populated by JS) -->
+    <!-- Thronglets Container -->
     <a-entity id="thronglets-container"></a-entity>
 
-    <!-- Connection lines container (populated by JS) -->
+    <!-- Connections Container -->
     <a-entity id="connections-container"></a-entity>
+
+    <!-- Grid Texture Mixin -->
+    <a-mixin id="grid-texture"
+             shader="flat"
+             material="color: #1a1a2e; transparent: true; opacity: 0.8">
+    </a-mixin>
 
   </a-scene>
 
+  <!-- VR Practice Script -->
   <script src="vr_practice.js"></script>
+
 </body>
 </html>

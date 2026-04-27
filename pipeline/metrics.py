@@ -82,7 +82,8 @@ def _generate_diff(baseline_dir: pathlib.Path, current_dir: pathlib.Path,
                    output_path: pathlib.Path) -> None:
     """Generate a unified diff between two prompt directories."""
     diffs = []
-    for f in sorted(baseline_dir.glob("*.md")):
+    all_baseline_files = sorted(list(baseline_dir.glob("*.md")) + list(baseline_dir.glob("*.yaml")))
+    for f in all_baseline_files:
         current_f = current_dir / f.name
         if not current_f.exists():
             diffs.append(f"--- {f.name} (DELETED)\n")
@@ -99,7 +100,8 @@ def _generate_diff(baseline_dir: pathlib.Path, current_dir: pathlib.Path,
             diffs.extend(diff)
 
     # Check for new files not in baseline
-    for f in sorted(current_dir.glob("*.md")):
+    all_current_files = sorted(list(current_dir.glob("*.md")) + list(current_dir.glob("*.yaml")))
+    for f in all_current_files:
         if not (baseline_dir / f.name).exists():
             diffs.append(f"+++ {f.name} (NEW)\n")
 

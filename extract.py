@@ -269,7 +269,6 @@ def main() -> None:
 
     # Inject audit snapshot into the zip
     if args.snapshot:
-        import shutil
         with zipfile.ZipFile(zip_path, "a", zipfile.ZIP_DEFLATED) as zf:
             # Include current prompt files
             prompts_dir = pipeline_dir.parent / "pipeline" / "prompts"

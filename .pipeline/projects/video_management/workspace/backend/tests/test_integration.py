@@ -58,11 +58,17 @@ def test_client():
 
 @pytest.fixture
 def sample_table(test_client):
-    """Create a default table via the API."""
-    # The default table is auto-created on first access
-    response = test_client.get("/api/videos")
-    assert response.status_code == 200
-    return response.json()
+    """Create a default table via the API and return its table_id."""
+    # Create a test table
+    response = test_client.post(
+        "/api/tables",
+        json={
+            "name": "Test Table",
+            "description": "A test table for integration tests",
+        },
+    )
+    assert response.status_code == 201
+    return response.json()["id"]
 
 
 # ── Health check ───────────────────────────────────────────────────────────
@@ -207,9 +213,7 @@ def test_list_videos_search(test_client):
 
 def test_list_builtin_fields(test_client, sample_table):
     """Test listing built-in fields."""
-    # Get table ID from videos list
-    videos_resp = test_client.get("/api/videos")
-    table_id = videos_resp.json()["items"][0]["table_id"] if videos_resp.json()["items"] else None
+    table_id = sample_table
     assert table_id is not None
 
     response = test_client.get(f"/api/tables/{table_id}/fields")
@@ -224,8 +228,7 @@ def test_list_builtin_fields(test_client, sample_table):
 
 def test_add_custom_field(test_client, sample_table):
     """Test adding a custom field to a table."""
-    videos_resp = test_client.get("/api/videos")
-    table_id = videos_resp.json()["items"][0]["table_id"] if videos_resp.json()["items"] else None
+    table_id = sample_table
     assert table_id is not None
 
     payload = {
@@ -241,8 +244,7 @@ def test_add_custom_field(test_client, sample_table):
 
 def test_add_duplicate_field(test_client, sample_table):
     """Test that adding a duplicate field name fails."""
-    videos_resp = test_client.get("/api/videos")
-    table_id = videos_resp.json()["items"][0]["table_id"] if videos_resp.json()["items"] else None
+    table_id = sample_table
     assert table_id is not None
 
     payload = {"name": "episode_number", "field_type": "number"}
@@ -254,8 +256,7 @@ def test_add_duplicate_field(test_client, sample_table):
 
 def test_remove_custom_field(test_client, sample_table):
     """Test removing a custom field."""
-    videos_resp = test_client.get("/api/videos")
-    table_id = videos_resp.json()["items"][0]["table_id"] if videos_resp.json()["items"] else None
+    table_id = sample_table
     assert table_id is not None
 
     # Add a field
@@ -413,7 +414,7 @@ def test_update_nonexistent_video(test_client):
 
 def test_cors_headers(test_client):
     """Test that CORS headers are present."""
-    response = test_client.options("/api/videos")
+    response = test_client.options("/api/tables")
     assert response.status_code == 200
     assert "access-control-allow-origin" in response.headers
 

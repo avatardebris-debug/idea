@@ -64,6 +64,16 @@ export interface FieldCreate {
   is_required?: boolean;
 }
 
+export interface Table {
+  id: string;
+  name: string;
+  description?: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface TableResponse extends Table {}
+
 const API_BASE = '/api';
 
 async function request<T>(url: string, options?: RequestInit): Promise<T> {
@@ -130,9 +140,17 @@ export const api = {
         body: JSON.stringify(data),
       }),
 
-    delete: (tableId: string, fieldId: string): Promise<void> =>
-      request(`/tables/${tableId}/fields/${fieldId}`, {
+    delete: (fieldId: string): Promise<void> =>
+      request(`/tables/fields/${fieldId}`, {
         method: 'DELETE',
       }),
+  },
+
+  tables: {
+    list: (): Promise<Table[]> =>
+      request('/tables'),
+
+    get: (id: string): Promise<Table> =>
+      request(`/tables/${id}`),
   },
 };

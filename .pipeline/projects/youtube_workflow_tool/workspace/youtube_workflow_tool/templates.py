@@ -1,245 +1,396 @@
-"""Template engine for YouTube video titles and descriptions.
+"""Template engine for generating YouTube video titles.
 
-Supports fill-in-the-blank patterns with {placeholders},
-built-in template categories, and custom template registration.
+Provides a collection of pre-built templates organized by category,
+with support for variable substitution and custom templates.
 """
 
 from __future__ import annotations
 
-import re
+import random
 from dataclasses import dataclass, field
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Set
+
+from .config import Config
 
 
 @dataclass
 class Template:
-    """A single template with a name, category, and pattern."""
+    """A title template with a pattern and metadata.
+
+    Attributes:
+        name: Unique name for the template.
+        category: Category of the template (e.g., "tutorial", "review").
+        pattern: Template pattern with {variable} placeholders.
+        variables: List of variables used in the pattern.
+    """
 
     name: str
     category: str
     pattern: str
+    variables: List[str] = field(default_factory=list)
 
-    def fill_in(self, **kwargs: str) -> str:
-        """Replace {placeholders} in the pattern with provided values."""
+    def __post_init__(self):
+        """Extract variables from pattern."""
+        if not self.variables:
+            self.variables = self._extract_variables()
+
+    def _extract_variables(self) -> List[str]:
+        """Extract variable names from pattern."""
+        import re
+        return re.findall(r"\{(\w+)\}", self.pattern)
+
+    def fill_in(self, **kwargs: Any) -> str:
+        """Fill in template variables and return rendered title.
+
+        Args:
+            **kwargs: Variable values to substitute.
+
+        Returns:
+            Rendered title string.
+        """
         result = self.pattern
-        for key, value in kwargs.items():
-            placeholder = "{" + key + "}"
-            result = result.replace(placeholder, str(value))
-        # Remove any remaining un-filled placeholders
-        result = re.sub(r"\{[^}]+\}", "", result)
+        for var in self.variables:
+            value = kwargs.get(var, f"{var.capitalize()}")
+            result = result.replace(f"{{{var}}}", str(value))
         return result
 
-    def to_dict(self) -> Dict[str, str]:
-        return {"name": self.name, "category": self.category, "pattern": self.pattern}
 
-    @classmethod
-    def from_dict(cls, data: Dict[str, str]) -> "Template":
-        return cls(
-            name=data["name"],
-            category=data["category"],
-            pattern=data["pattern"],
-        )
+# ── Built-in templates ────────────────────────────────────────────────────
 
-
-# ── Built-in templates ─────────────────────────────────────────────────
-
-BUILTIN_TEMPLATES: List[Template] = [
+BUILTIN_TEMPLATES: List[Dict[str, Any]] = [
     # Tutorial templates
-    Template(
-        name="tutorial_basic",
-        category="tutorial",
-        pattern="How to {topic} — Complete Beginner's Guide",
-    ),
-    Template(
-        name="tutorial_step_by_step",
-        category="tutorial",
-        pattern="{topic}: Step-by-Step Tutorial for {audience}",
-    ),
-    Template(
-        name="tutorial_quick",
-        category="tutorial",
-        pattern="Learn {topic} in {time} Minutes",
-    ),
-    Template(
-        name="tutorial_deep_dive",
-        category="tutorial",
-        pattern="The Ultimate Guide to {topic} — Everything You Need to Know",
-    ),
-    Template(
-        name="tutorial_pro_tips",
-        category="tutorial",
-        pattern="{topic} Pro Tips: Level Up Your Skills",
-    ),
+    {
+        "name": "tutorial_basic",
+        "category": "tutorial",
+        "pattern": "How to {topic} in {time} minutes",
+    },
+    {
+        "name": "tutorial_beginner",
+        "category": "tutorial",
+        "pattern": "Learn {topic} for Beginners - Complete Guide",
+    },
+    {
+        "name": "tutorial_advanced",
+        "category": "tutorial",
+        "pattern": "Advanced {topic} Techniques You Need to Know",
+    },
+    {
+        "name": "tutorial_step_by_step",
+        "category": "tutorial",
+        "pattern": "{topic}: Step-by-Step Tutorial",
+    },
+    {
+        "name": "tutorial_quick",
+        "category": "tutorial",
+        "pattern": "Quick {topic} Tutorial - Get Started Now",
+    },
+
     # Review templates
-    Template(
-        name="review_honest",
-        category="review",
-        pattern="Honest {topic} Review — Is It Worth It in {year}?",
-    ),
-    Template(
-        name="review_comparison",
-        category="review",
-        pattern="{topic} Review: {product_a} vs {product_b}",
-    ),
-    Template(
-        name="review_unboxing",
-        category="review",
-        pattern="{topic} Unboxing & First Impressions",
-    ),
-    # Vlog templates
-    Template(
-        name="vlog_day_in_life",
-        category="vlog",
-        pattern="A Day in My Life as a {role} | {topic}",
-    ),
-    Template(
-        name="vlog_adventure",
-        category="vlog",
-        pattern="I Tried {topic} for {time} Days — Here's What Happened",
-    ),
+    {
+        "name": "review_basic",
+        "category": "review",
+        "pattern": "{topic} Review - Is It Worth It?",
+    },
+    {
+        "name": "review_honest",
+        "category": "review",
+        "pattern": "Honest {topic} Review - Pros and Cons",
+    },
+    {
+        "name": "review_comparison",
+        "category": "review",
+        "pattern": "{topic} vs Competitors - Which Is Better?",
+    },
+    {
+        "name": "review_buying_guide",
+        "category": "review",
+        "pattern": "Best {topic} - Buying Guide 2024",
+    },
+
     # Listicle templates
-    Template(
-        name="listicle_top_n",
-        category="listicle",
-        pattern="Top {n} {topic} Tips You Need to Know",
-    ),
-    Template(
-        name="listicle_mistakes",
-        category="listicle",
-        pattern="{n} Common {topic} Mistakes (And How to Avoid Them)",
-    ),
-    Template(
-        name="listicle_secrets",
-        category="listicle",
-        pattern="{n} Secrets About {topic} Nobody Tells You",
-    ),
+    {
+        "name": "list_top_10",
+        "category": "listicle",
+        "pattern": "Top 10 {topic} Tips You Need to Know",
+    },
+    {
+        "name": "list_top_5",
+        "category": "listicle",
+        "pattern": "5 Best {topic} Strategies for Success",
+    },
+    {
+        "name": "list_mistakes",
+        "category": "listicle",
+        "pattern": "7 Common {topic} Mistakes to Avoid",
+    },
+    {
+        "name": "list_secrets",
+        "category": "listicle",
+        "pattern": "10 {topic} Secrets Nobody Tells You",
+    },
+
+    # Question templates
+    {
+        "name": "question_what",
+        "category": "question",
+        "pattern": "What Is {topic}? Everything Explained",
+    },
+    {
+        "name": "question_how",
+        "category": "question",
+        "pattern": "How Does {topic} Work? Complete Breakdown",
+    },
+    {
+        "name": "question_why",
+        "category": "question",
+        "pattern": "Why {topic} Matters More Than You Think",
+    },
+
     # How-to templates
-    Template(
-        name="howto_beginner",
-        category="howto",
-        pattern="{topic} for Beginners: Start Here",
-    ),
-    Template(
-        name="howto_advanced",
-        category="howto",
-        pattern="{topic} Advanced Techniques You Should Know",
-    ),
-    Template(
-        name="howto_troubleshoot",
-        category="howto",
-        pattern="How to Fix {topic} Problems — Quick Solutions",
-    ),
+    {
+        "name": "howto_complete",
+        "category": "howto",
+        "pattern": "Complete Guide to {topic} - From Zero to Hero",
+    },
+    {
+        "name": "howto_beginner",
+        "category": "howto",
+        "pattern": "{topic} for Complete Beginners",
+    },
+    {
+        "name": "howto_pro",
+        "category": "howto",
+        "pattern": "Master {topic} Like a Pro",
+    },
+
+    # Update templates
+    {
+        "name": "update_new",
+        "category": "update",
+        "pattern": "New {topic} Features You Need to See",
+    },
+    {
+        "name": "update_tips",
+        "category": "update",
+        "pattern": "Latest {topic} Tips and Tricks",
+    },
+
     # Comparison templates
-    Template(
-        name="comparison_vs",
-        category="comparison",
-        pattern="{product_a} vs {product_b}: Which Is Better for {topic}?",
-    ),
-    Template(
-        name="comparison_roundup",
-        category="comparison",
-        pattern="{n} Best {topic} Tools Compared in {year}",
-    ),
-    # Storytelling templates
-    Template(
-        name="storytelling_journey",
-        category="storytelling",
-        pattern="My Journey with {topic}: What I Learned",
-    ),
-    Template(
-        name="storytelling_mistake",
-        category="storytelling",
-        pattern="How {topic} Changed My Life Forever",
-    ),
-    # Announcement templates
-    Template(
-        name="announcement_new",
-        category="announcement",
-        pattern="Introducing: {topic} — Everything You Need to Know",
-    ),
-    Template(
-        name="announcement_update",
-        category="announcement",
-        pattern="{topic} Update: What's New in {year}",
-    ),
+    {
+        "name": "comparison_vs",
+        "category": "comparison",
+        "pattern": "{topic} vs {comparison} - The Ultimate Showdown",
+    },
+    {
+        "name": "comparison_best",
+        "category": "comparison",
+        "pattern": "Best {topic} Options Compared",
+    },
+
+    # List templates
+    {
+        "name": "list_essentials",
+        "category": "list",
+        "pattern": "Essential {topic} Tools You Need",
+    },
+    {
+        "name": "list_resources",
+        "category": "list",
+        "pattern": "Top {topic} Resources for 2024",
+    },
+
+    # Time-based templates
+    {
+        "name": "time_10min",
+        "category": "time",
+        "pattern": "Learn {topic} in 10 Minutes",
+    },
+    {
+        "name": "time_30min",
+        "category": "time",
+        "pattern": "Master {topic} in 30 Minutes",
+    },
+    {
+        "name": "time_1hour",
+        "category": "time",
+        "pattern": "Complete {topic} Course in 1 Hour",
+    },
+
+    # Problem-solution templates
+    {
+        "name": "problem_solution",
+        "category": "problem",
+        "pattern": "Solve {topic} Problems Once and for All",
+    },
+    {
+        "name": "problem_fix",
+        "category": "problem",
+        "pattern": "Fix Your {topic} Issues - Easy Solutions",
+    },
+
+    # Benefit templates
+    {
+        "name": "benefit_transform",
+        "category": "benefit",
+        "pattern": "Transform Your {topic} Skills in Days",
+    },
+    {
+        "name": "benefit_improve",
+        "category": "benefit",
+        "pattern": "Improve Your {topic} Game - Pro Tips",
+    },
+    {
+        "name": "benefit_results",
+        "category": "benefit",
+        "pattern": "Get Better {topic} Results - Guaranteed",
+    },
+
+    # Trending templates
+    {
+        "name": "trending_now",
+        "category": "trending",
+        "pattern": "Why Everyone Is Talking About {topic}",
+    },
+    {
+        "name": "trending_viral",
+        "category": "trending",
+        "pattern": "The {topic} Trend Explained",
+    },
+
+    # Ultimate templates
+    {
+        "name": "ultimate_complete",
+        "category": "ultimate",
+        "pattern": "The Ultimate {topic} Guide - Everything You Need",
+    },
+    {
+        "name": "ultimate_master",
+        "category": "ultimate",
+        "pattern": "Ultimate {topic} Masterclass",
+    },
 ]
 
 
-# ── TemplateEngine ─────────────────────────────────────────────────────
-
 class TemplateEngine:
-    """Manages built-in and custom templates, with listing and fill-in support."""
+    """Engine for generating titles using templates.
 
-    def __init__(self) -> None:
-        self._templates: List[Template] = list(BUILTIN_TEMPLATES)
-        self._custom_templates: List[Template] = []
+    Attributes:
+        templates: List of available templates.
+        custom_templates: List of user-defined templates.
+    """
 
-    @property
-    def all_templates(self) -> List[Template]:
-        """Return all templates (built-in + custom)."""
-        return self._templates + self._custom_templates
+    def __init__(self, config: Optional[Config] = None):
+        """Initialize template engine.
 
-    @property
-    def built_in_templates(self) -> List[Template]:
-        return list(self._templates)
+        Args:
+            config: Optional configuration for template selection.
+        """
+        self.config = config or Config()
+        self.templates: List[Template] = []
+        self.custom_templates: List[Template] = []
+        self._load_builtin_templates()
 
-    @property
-    def custom_templates(self) -> List[Template]:
-        return list(self._custom_templates)
+    def _load_builtin_templates(self) -> None:
+        """Load built-in templates."""
+        for template_data in BUILTIN_TEMPLATES:
+            template = Template(
+                name=template_data["name"],
+                category=template_data["category"],
+                pattern=template_data["pattern"],
+            )
+            self.templates.append(template)
 
-    def add_template(self, template: Template) -> None:
-        """Add a custom template."""
-        self._custom_templates.append(template)
+    def add_template(self, name: str, category: str, pattern: str) -> None:
+        """Add a custom template.
 
-    def add_templates(self, templates: List[Template]) -> None:
-        """Add multiple custom templates."""
-        self._custom_templates.extend(templates)
+        Args:
+            name: Unique template name.
+            category: Template category.
+            pattern: Template pattern with {variable} placeholders.
+        """
+        template = Template(name=name, category=category, pattern=pattern)
+        self.custom_templates.append(template)
 
-    def list_categories(self) -> List[str]:
-        """List all available template categories."""
-        cats = set()
-        for t in self.all_templates:
-            cats.add(t.category)
-        return sorted(cats)
+    def get_templates_by_category(self, category: str) -> List[Template]:
+        """Get all templates in a category.
 
-    def list_templates(self, category: Optional[str] = None) -> List[Template]:
-        """List templates, optionally filtered by category."""
-        if category is None:
-            return list(self.all_templates)
-        return [t for t in self.all_templates if t.category == category]
+        Args:
+            category: Category name to filter by.
 
-    def get_template(self, name: str) -> Optional[Template]:
-        """Get a template by name."""
-        for t in self.all_templates:
-            if t.name == name:
-                return t
-        return None
+        Returns:
+            List of templates in the category.
+        """
+        all_templates = self.templates + self.custom_templates
+        return [t for t in all_templates if t.category == category]
 
-    def fill_in(self, template_name: str, **kwargs: str) -> Optional[str]:
-        """Fill in a template by name with the given values."""
-        t = self.get_template(template_name)
-        if t is None:
-            return None
-        return t.fill_in(**kwargs)
+    def get_random_template(self, category: Optional[str] = None) -> Template:
+        """Get a random template.
 
-    def generate_titles(self, category: str, **kwargs: str) -> List[str]:
-        """Generate title variants from a category of templates."""
-        results = []
-        for t in self.list_templates(category):
-            filled = t.fill_in(**kwargs)
-            if filled:
-                results.append(filled)
-        return results
+        Args:
+            category: Optional category to filter by.
 
-    def to_dict(self) -> Dict[str, Any]:
-        return {
-            "built_in": [t.to_dict() for t in self._templates],
-            "custom": [t.to_dict() for t in self._custom_templates],
-        }
+        Returns:
+            Random template from available templates.
+        """
+        all_templates = self.templates + self.custom_templates
 
-    @classmethod
-    def from_dict(cls, data: Dict[str, Any]) -> "TemplateEngine":
-        engine = cls()
-        engine._templates = [Template.from_dict(t) for t in data.get("built_in", [])]
-        engine._custom_templates = [Template.from_dict(t) for t in data.get("custom", [])]
-        return engine
+        if category:
+            templates = [t for t in all_templates if t.category == category]
+        else:
+            templates = all_templates
+
+        if not templates:
+            templates = all_templates
+
+        return random.choice(templates)
+
+    def generate_title(self, topic: str, category: Optional[str] = None) -> str:
+        """Generate a title using a random template.
+
+        Args:
+            topic: Topic to use in the title.
+            category: Optional category to filter templates.
+
+        Returns:
+            Generated title string.
+        """
+        template = self.get_random_template(category)
+        return template.fill_in(topic=topic)
+
+    def generate_titles(
+        self,
+        topic: str,
+        num_titles: int = 10,
+        categories: Optional[List[str]] = None,
+    ) -> List[str]:
+        """Generate multiple unique titles.
+
+        Args:
+            topic: Topic to use in titles.
+            num_titles: Number of titles to generate.
+            categories: Optional list of categories to use.
+
+        Returns:
+            List of unique generated titles.
+        """
+        titles: Set[str] = set()
+        attempts = 0
+        max_attempts = num_titles * 10
+
+        while len(titles) < num_titles and attempts < max_attempts:
+            category = random.choice(categories) if categories else None
+            title = self.generate_title(topic, category)
+            titles.add(title)
+            attempts += 1
+
+        return list(titles)
+
+    def get_categories(self) -> List[str]:
+        """Get all available template categories.
+
+        Returns:
+            List of category names.
+        """
+        all_templates = self.templates + self.custom_templates
+        categories: Set[str] = {t.category for t in all_templates}
+        return sorted(list(categories))

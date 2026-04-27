@@ -379,8 +379,7 @@ def _rebuild_queues_from_state(bus: MessageBus) -> int:
         started_at = state.get("started_at")
         if started_at:
             try:
-                from datetime import datetime as _dt, timezone as _tz
-                start = _dt.fromisoformat(started_at)
+                start = datetime.fromisoformat(started_at)
                 elapsed_min = (datetime.now(timezone.utc) - start).total_seconds() / 60
                 if elapsed_min > PROJECT_TIME_BUDGET:
                     state["status"] = "budget_exceeded"
@@ -697,7 +696,7 @@ def _reset_retries(project_dir: pathlib.Path, phase_num: int) -> None:
 
 def _append_polish(project_dir: pathlib.Path, phase_num: int, notes: str) -> None:
     """Save non-blocking review notes as deferred polish tasks."""
-    path = project_dir.parent.parent / ".pipeline" / "state" / "plan_amendments.md"
+    path = PIPELINE_DIR / "state" / "plan_amendments.md"
     path.parent.mkdir(parents=True, exist_ok=True)
     bullets = re.findall(r'^[-*]\s+(.+)$', notes, re.MULTILINE)
     if not bullets:
@@ -902,7 +901,7 @@ def run_pipeline(
                                 ci = json.loads(ci_path.read_text(encoding="utf-8"))
                                 run_metrics.record_project_start(slug)
                                 st = ci.get("status", "")
-                                if st == "completed":
+                                if st == "complete":
                                     # Read retry counts from phase_retries.json
                                     retries = 0
                                     pr_path = proj_dir / "state" / "phase_retries.json"

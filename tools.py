@@ -256,7 +256,7 @@ TOOL_SCHEMAS = [
     },
     {
         "name": "run_shell",
-        "description": "Run a shell command and return the output. Timeout: 30s.",
+        "description": "Run a shell command and return the output. Timeout: 120s.",
         "parameters": {
             "type": "object",
             "properties": {

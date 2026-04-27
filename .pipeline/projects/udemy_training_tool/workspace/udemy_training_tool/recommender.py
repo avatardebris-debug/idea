@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import statistics
 from typing import Dict, List, Optional
 
 from udemy_training_tool.models import Course
@@ -19,49 +18,13 @@ def recommend_courses(
       - Rating:        30% weight (scale 0-5)
       - Student count: 25% weight (normalized via min-max)
       - Price value:   20% weight (lower price = higher score)
-      - Course depth:  15% weight (num_lectures, normalized via min-max)
-      - Instructor:    10% weight (heuristic: instructor name length as proxy)
+      - Course depth:  15% weight (lecture count)
+      - Instructor:    10% weight (name length proxy)
 
     Args:
-        courses: List of Course objects to score.
+        courses: List of courses to evaluate.
         target_skill: Skill/topic to match courses against.
-        top_n: Number of top recommendations to return.
-
-    Returns:
-        List of dicts with keys: course, score (0-100), breakdown (dict of component scores).
-        Sorted by score descending. Ties broken by rating (desc) then price (asc).
-    """
-    if not courses:
-        return []
-
-    # Filter courses that match the target skill
-    matched = [c for c in courses if _skill_match(c, target_skill)]
-
-    if not matched:
-        # If no exact match, use all courses
-        matched = list(courses)
-
-    # Compute scores
-    scored: List[Dict] = []
-    for course in matched:
-        score_info = _score_course(course)
-        scored.append(score_info)
-
-    # Sort: by score desc, then rating desc, then price asc
-    scored.sort(key=lambda x: (-x["score"], -x["course"].rating, x["course"].price))
-
-    return scored[:top_n]
-
-
-def compare_courses(
-    courses: List[Course],
-    target_skill: str = "",
-) -> List[Dict]:
-    """Compare a list of courses side-by-side with score breakdowns.
-
-    Args:
-        courses: List of Course objects to compare.
-        target_skill: Optional skill/topic for relevance scoring.
+        top_n: Number of top results to return.
 
     Returns:
         List of dicts with course, score, and breakdown.
@@ -69,108 +32,191 @@ def compare_courses(
     if not courses:
         return []
 
-    results: List[Dict] = []
-    for course in courses:
-        score_info = _score_course(course)
-        results.append(score_info)
+    scored = [_score_course(course, target_skill) for course in courses]
 
-    results.sort(key=lambda x: (-x["score"], -x["course"].rating, x["course"].price))
-    return results
+    # Sort by score descending, then by rating (desc), then by price (asc)
+    scored.sort(key=lambda x: (-x["score"], -x["breakdown"]["rating"], x["course"].price))
 
-
-def _skill_match(course: Course, target_skill: str) -> bool:
-    """Check if a course matches the target skill."""
-    if not target_skill:
-        return True
-    skill_lower = target_skill.lower()
-    searchable = " ".join([
-        course.title,
-        course.description,
-        " ".join(course.tags),
-        course.category,
-    ]).lower()
-    return skill_lower in searchable
+    return scored[:top_n]
 
 
-def _score_course(course: Course) -> Dict:
-    """Compute a composite score for a single course."""
-    # Rating score (0-100): rating / 5 * 100
-    rating_score = (course.rating / 5.0) * 100 if course.rating > 0 else 0
+def compare_courses(
+    courses: List[Course],
+    target_skill: Optional[str] = None,
+) -> List[Dict]:
+    """Score and rank all courses without filtering by skill.
 
-    # Student count score: normalize using median imputation for missing values
-    student_score = _normalize_student_count(course.num_students)
+    Args:
+        courses: List of courses to evaluate.
+        target_skill: Optional skill to match (for display purposes).
 
-    # Price value score: lower price = higher score (inverse)
+    Returns:
+        List of dicts with course, score, and breakdown.
+    """
+    if not courses:
+        return []
+
+    scored = [_score_course(course, target_skill or "") for course in courses]
+
+    # Sort by score descending, then by rating (desc), then by price (asc)
+    scored.sort(key=lambda x: (-x["score"], -x["breakdown"]["rating"], x["course"].price))
+
+    return scored
+
+
+def _score_course(course: Course, target_skill: str = "") -> Dict:
+    """Score a single course and return detailed breakdown.
+
+    Args:
+        course: Course to score.
+        target_skill: Optional skill/topic to match.
+
+    Returns:
+        Dict with course, score, and breakdown.
+    """
+    skill_match = _skill_match(course, target_skill)
+
+    # Calculate component scores
+    rating_score = course.rating / 5.0 * 100.0
+    students_score = _normalize_student_count(course.num_students)
     price_score = _normalize_price(course.price)
-
-    # Course depth score: normalize num_lectures
-    lecture_score = _normalize_lectures(course.num_lectures)
-
-    # Instructor quality: heuristic based on name length (longer names tend to be real instructors)
+    depth_score = _normalize_lectures(course.num_lectures)
     instructor_score = _score_instructor(course.instructor)
 
-    # Composite score
-    composite = (
-        rating_score * 0.30
-        + student_score * 0.25
-        + price_score * 0.20
-        + lecture_score * 0.15
-        + instructor_score * 0.10
+    # Weighted composite score
+    score = (
+        rating_score * 0.30 +
+        students_score * 0.25 +
+        price_score * 0.20 +
+        depth_score * 0.15 +
+        instructor_score * 0.10
     )
 
     return {
         "course": course,
-        "score": round(composite, 2),
+        "score": round(score, 2),
         "breakdown": {
             "rating": round(rating_score, 2),
-            "students": round(student_score, 2),
+            "students": round(students_score, 2),
             "price_value": round(price_score, 2),
-            "depth": round(lecture_score, 2),
+            "depth": round(depth_score, 2),
             "instructor": round(instructor_score, 2),
+            "skill_match": skill_match,
         },
     }
 
 
+def _skill_match(course: Course, target_skill: str) -> bool:
+    """Check if course matches the target skill/topic."""
+    if not target_skill:
+        return True
+
+    target_lower = target_skill.lower()
+
+    # Check title
+    if target_lower in course.title.lower():
+        return True
+
+    # Check description
+    if target_lower in course.description.lower():
+        return True
+
+    # Check tags
+    for tag in course.tags:
+        if target_lower in tag.lower():
+            return True
+
+    # Check category
+    if target_lower in course.category.lower():
+        return True
+
+    return False
+
+
 def _normalize_student_count(num_students: int) -> float:
-    """Normalize student count to 0-100 scale using median imputation."""
+    """Normalize student count to 0-100 scale.
+
+    Uses min-max normalization with:
+      - min = 0 (imputed for 0 or negative)
+      - max = 200,000 (capped)
+
+    Returns:
+        Normalized score between 0 and 100.
+    """
     if num_students <= 0:
-        return 50.0  # median imputation for missing
-    # Log scale normalization: 1 student = ~0, 1000000 students = 100
-    import math
-    max_students = 1_000_000
-    if num_students >= max_students:
-        return 100.0
-    return (math.log10(num_students + 1) / math.log10(max_students + 1)) * 100
+        # Median imputation for missing values
+        return 50.0
+
+    # Cap at max
+    capped = min(num_students, 200_000)
+
+    # Min-max normalization
+    score = (capped / 200_000) * 100.0
+    return min(100.0, max(0.0, score))
 
 
 def _normalize_price(price: float) -> float:
-    """Normalize price to 0-100 scale (lower price = higher score)."""
+    """Normalize price to 0-100 scale (lower price = higher score).
+
+    Uses min-max normalization with:
+      - min = 0 (free courses get max score)
+      - max = 200 (capped)
+
+    Returns:
+        Normalized score between 0 and 100.
+    """
     if price <= 0:
-        return 100.0  # free is best
-    max_price = 200.0
-    if price >= max_price:
-        return 0.0
-    return (1 - price / max_price) * 100
+        return 100.0
+
+    # Cap at max
+    capped = min(price, 200.0)
+
+    # Inverted min-max normalization
+    score = 100.0 - (capped / 200.0) * 100.0
+    return min(100.0, max(0.0, score))
 
 
 def _normalize_lectures(num_lectures: int) -> float:
-    """Normalize num_lectures to 0-100 scale using median imputation."""
+    """Normalize lecture count to 0-100 scale.
+
+    Uses min-max normalization with:
+      - min = 0 (imputed for 0 or negative)
+      - max = 400 (capped)
+
+    Returns:
+        Normalized score between 0 and 100.
+    """
     if num_lectures <= 0:
-        return 50.0  # median imputation
-    max_lectures = 500
-    if num_lectures >= max_lectures:
-        return 100.0
-    return (num_lectures / max_lectures) * 100
+        # Median imputation for missing values
+        return 50.0
+
+    # Cap at max
+    capped = min(num_lectures, 400)
+
+    # Min-max normalization
+    score = (capped / 400) * 100.0
+    return min(100.0, max(0.0, score))
 
 
 def _score_instructor(instructor: str) -> float:
-    """Score instructor quality using heuristic (name length as proxy)."""
-    if not instructor:
-        return 50.0  # median imputation
-    name_len = len(instructor.strip())
-    # Heuristic: 3-30 chars is typical, score peaks around 15
-    if name_len <= 0:
-        return 0
-    if name_len >= 30:
-        return 100
-    return min(100, (name_len / 30) * 100)
+    """Score instructor based on name length (proxy for experience).
+
+    Uses min-max normalization with:
+      - min = 0 (empty/whitespace)
+      - max = 15 characters (capped)
+
+    Returns:
+        Normalized score between 0 and 100.
+    """
+    if not instructor or not instructor.strip():
+        # Median imputation for missing values
+        return 50.0
+
+    name_length = len(instructor.strip())
+
+    # Cap at max
+    capped = min(name_length, 15)
+
+    # Min-max normalization
+    score = (capped / 15) * 100.0
+    return min(100.0, max(0.0, score))

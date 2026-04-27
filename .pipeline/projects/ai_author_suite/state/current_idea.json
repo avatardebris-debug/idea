@@ -1,6 +1,8 @@
 {
   "title": "[ai author suite]",
   "description": "[niche/topic research, keyword research,book outliner, chapter developer, chapter outliner, detail fill in, deep editor restructure format, cover designer, book cover designer, etc]",
-  "status": "planning",
-  "total_phases": 6
+  "status": "phase_1_validating",
+  "total_phases": 6,
+  "tasks_done": 0,
+  "tasks_total": 50
 }

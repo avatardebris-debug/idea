@@ -145,7 +145,7 @@ class Course:
         category: Optional[str] = None,
     ) -> bool:
         """Check if course matches all filter criteria."""
-        if self.rating < min_rating:
+        if min_rating is not None and self.rating < min_rating:
             return False
         if max_price is not None and self.price > max_price:
             return False

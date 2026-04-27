@@ -13,7 +13,7 @@
   },
   "thronglets": [
     {
-      "id": "thronglet_1",
+      "id": 0,
       "name": "Arch",
       "role": "System Architect",
       "color": "#4fc3f7",
@@ -29,7 +29,7 @@
       "description": "A calm system architect who loves breaking down complex problems into clean layers."
     },
     {
-      "id": "thronglet_2",
+      "id": 1,
       "name": "Deploy",
       "role": "CI/CD Pipeline",
       "color": "#81c784",
@@ -45,7 +45,7 @@
       "description": "A hyperactive CI/CD pipeline thronglet who is stressed about the latest deployment failure."
     },
     {
-      "id": "thronglet_3",
+      "id": 2,
       "name": "Data",
       "role": "Database Server",
       "color": "#ffb74d",
@@ -61,7 +61,7 @@
       "description": "An overworked database server thronglet that is critically overloaded with queries."
     },
     {
-      "id": "thronglet_4",
+      "id": 3,
       "name": "Cache",
       "role": "Redis Cache",
       "color": "#e57373",
@@ -77,7 +77,7 @@
       "description": "A speedy Redis cache thronglet that zips around serving cached responses."
     },
     {
-      "id": "thronglet_5",
+      "id": 4,
       "name": "Monitor",
       "role": "Observability Stack",
       "color": "#ba68c8",
@@ -94,12 +94,12 @@
     }
   ],
   "relationships": [
-    { "from": "thronglet_1", "to": "thronglet_2", "label": "designs", "type": "mentor", "color": "#4fc3f7" },
-    { "from": "thronglet_2", "to": "thronglet_3", "label": "deploys to", "type": "friend", "color": "#81c784" },
-    { "from": "thronglet_3", "to": "thronglet_4", "label": "caches", "type": "friend", "color": "#e57373" },
-    { "from": "thronglet_5", "to": "thronglet_1", "label": "monitors", "type": "rival", "color": "#ba68c8" },
-    { "from": "thronglet_5", "to": "thronglet_2", "label": "monitors", "type": "rival", "color": "#ba68c8" },
-    { "from": "thronglet_5", "to": "thronglet_3", "label": "monitors", "type": "rival", "color": "#ba68c8" },
-    { "from": "thronglet_5", "to": "thronglet_4", "label": "monitors", "type": "rival", "color": "#ba68c8" }
+    { "from": 0, "to": 1, "label": "designs", "type": "mentor", "color": "#4fc3f7" },
+    { "from": 1, "to": 2, "label": "deploys to", "type": "friend", "color": "#81c784" },
+    { "from": 2, "to": 3, "label": "caches", "type": "friend", "color": "#e57373" },
+    { "from": 4, "to": 0, "label": "monitors", "type": "rival", "color": "#ba68c8" },
+    { "from": 4, "to": 1, "label": "monitors", "type": "rival", "color": "#ba68c8" },
+    { "from": 4, "to": 2, "label": "monitors", "type": "rival", "color": "#ba68c8" },
+    { "from": 4, "to": 3, "label": "monitors", "type": "rival", "color": "#ba68c8" }
   ]
 }

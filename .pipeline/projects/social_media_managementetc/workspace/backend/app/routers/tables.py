@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from app.database import get_db
-from app.schemas import TableCreate, TableResponse
+from app.schemas import TableCreate, TableResponse, TableUpdate
 from app.services import table_service
 
 router = APIRouter()
@@ -38,8 +38,10 @@ def get_table(table_id: int, db: Session = Depends(get_db)):
 
 
 @router.put("/{table_id}", response_model=TableResponse)
-def update_table(table_id: int, table_data: TableCreate, db: Session = Depends(get_db)):
-    table = table_service.update_table(db, table_id, name=table_data.name, column_definitions=table_data.column_definitions)
+def update_table(table_id: int, table_data: TableUpdate, db: Session = Depends(get_db)):
+    table = table_service.update_table(db, table_id, 
+                                       name=table_data.name, 
+                                       column_definitions=table_data.column_definitions)
     if not table:
         raise HTTPException(status_code=404, detail="Table not found")
     return table

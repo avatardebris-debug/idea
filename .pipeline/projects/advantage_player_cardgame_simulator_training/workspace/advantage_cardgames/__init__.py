@@ -1,7 +1,12 @@
-"""Advantage Player Card Game Simulator Training.
+"""Advantage Card Games - Blackjack simulation and training.
 
-A Python-based suite of card game simulators with Monte Carlo training
-engine for advantage play.
+A comprehensive framework for simulating blackjack games and training
+optimal strategies using Monte Carlo reinforcement learning.
+
+Submodules:
+    core: Card game primitives (Card, Deck, Hand)
+    simulators: Game simulations (BlackjackGame)
+    monte_carlo: Monte Carlo training and learning algorithms
 """
 
 __version__ = "0.1.0"

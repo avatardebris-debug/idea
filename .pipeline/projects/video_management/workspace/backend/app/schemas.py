@@ -2,7 +2,7 @@
 
 from datetime import datetime
 from typing import List, Optional, Any
-from pydantic import BaseModel, Field, validator
+from pydantic import BaseModel, Field, field_validator
 
 from .models import FieldTypeId, VideoStatus
 
@@ -15,11 +15,12 @@ class FieldCreate(BaseModel):
     options: Optional[List[str]] = None
     is_required: bool = False
 
-    @validator("options")
-    def validate_options(cls, v, values):
-        if values.get("field_type") == FieldTypeId.SELECT and not v:
+    @field_validator("options")
+    @classmethod
+    def validate_options(cls, v, info):
+        if info.data.get("field_type") == FieldTypeId.SELECT and not v:
             raise ValueError("SELECT fields must have options")
-        if values.get("field_type") != FieldTypeId.SELECT and v:
+        if info.data.get("field_type") != FieldTypeId.SELECT and v:
             raise ValueError("Only SELECT fields can have options")
         return v
 
@@ -33,8 +34,9 @@ class FieldResponse(BaseModel):
     is_deleted: bool
     created_at: datetime
 
-    class Config:
-        from_attributes = True
+    model_config = {
+        "from_attributes": True
+    }
 
 
 # ── Video schemas ──────────────────────────────────────────────
@@ -49,7 +51,8 @@ class VideoCreate(BaseModel):
     youtube_video_id: Optional[str] = None
     custom_fields: dict[str, Any] = {}
 
-    @validator("tags")
+    @field_validator("tags")
+    @classmethod
     def validate_tags(cls, v):
         return [t.strip() for t in v if t.strip()]
 
@@ -78,8 +81,9 @@ class VideoResponse(BaseModel):
     created_at: datetime
     updated_at: datetime
 
-    class Config:
-        from_attributes = True
+    model_config = {
+        "from_attributes": True
+    }
 
 
 class VideoListResponse(BaseModel):
@@ -91,17 +95,18 @@ class VideoListResponse(BaseModel):
 
 # ── Table schemas ──────────────────────────────────────────────
 
-class TableMetadataCreate(BaseModel):
+class TableRequest(BaseModel):
     name: str = Field(..., min_length=1, max_length=100)
     description: str = ""
 
 
-class TableMetadataResponse(BaseModel):
+class TableResponse(BaseModel):
     id: str
     name: str
     description: str
     created_at: datetime
     updated_at: datetime
 
-    class Config:
-        from_attributes = True
+    model_config = {
+        "from_attributes": True
+    }

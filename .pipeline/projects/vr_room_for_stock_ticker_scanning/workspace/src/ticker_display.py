@@ -7,7 +7,6 @@ from dataclasses import dataclass, field
 from typing import List, Optional
 
 from src.ticker import Ticker
-from src.color_scheme import TickerColorScheme
 
 
 @dataclass
@@ -20,33 +19,93 @@ class TickerPanel:
     rotation: tuple = (0.0, 0.0, 0.0)
     is_selected: bool = False
     is_highlighted: bool = False
+    _color: Optional[tuple] = None
+    _background_color: Optional[tuple] = None
+    _text_color: Optional[tuple] = None
 
     @property
-    def color(self) -> TickerColorScheme:
+    def color(self) -> tuple:
         """Get the display color for this panel."""
-        return TickerColorScheme.get_price_color(self.ticker.change_percent)
+        if self._color is not None:
+            return self._color
+        if self.ticker.change > 0:
+            return (0.0, 1.0, 0.0)  # Green
+        elif self.ticker.change < 0:
+            return (1.0, 0.0, 0.0)  # Red
+        else:
+            return (1.0, 1.0, 1.0)  # White
+
+    @color.setter
+    def color(self, value: Optional[tuple]) -> None:
+        self._color = value
 
     @property
-    def background_color(self) -> TickerColorScheme:
+    def background_color(self) -> tuple:
         """Get the background color for this panel."""
-        return TickerColorScheme.get_background_color(self.ticker.change_percent)
+        if self._background_color is not None:
+            return self._background_color
+        if self.ticker.change > 0:
+            return (0.0, 0.5, 0.0)  # Dark green
+        elif self.ticker.change < 0:
+            return (0.5, 0.0, 0.0)  # Dark red
+        else:
+            return (0.2, 0.2, 0.2)  # Gray
+
+    @background_color.setter
+    def background_color(self, value: Optional[tuple]) -> None:
+        self._background_color = value
 
     @property
-    def text_color(self) -> TickerColorScheme:
+    def text_color(self) -> tuple:
         """Get the text color for this panel."""
-        return TickerColorScheme.get_text_color(self.ticker.change_percent)
+        if self._text_color is not None:
+            return self._text_color
+        return (1.0, 1.0, 1.0)  # White
 
-    def update(self, ticker: Ticker) -> None:
-        """Update the panel with new ticker data."""
-        self.ticker = ticker
+    @text_color.setter
+    def text_color(self, value: Optional[tuple]) -> None:
+        self._text_color = value
+
+    def select(self) -> None:
+        """Select this panel."""
+        self.is_selected = True
+        self.is_highlighted = True
+
+    def deselect(self) -> None:
+        """Deselect this panel."""
+        self.is_selected = False
+        self.is_highlighted = False
+
+    def toggle(self) -> None:
+        """Toggle selection state."""
+        if self.is_selected:
+            self.deselect()
+        else:
+            self.select()
+
+    def highlight(self) -> None:
+        """Highlight this panel."""
+        self.is_highlighted = True
+
+    def unhighlight(self) -> None:
+        """Unhighlight this panel."""
+        self.is_highlighted = False
+
+    def update_ticker(self, new_ticker: Ticker) -> None:
+        """Update this panel with a new ticker."""
+        self.ticker = new_ticker
+        # Reset custom colors when ticker changes
+        self._color = None
+        self._background_color = None
+        self._text_color = None
 
     def to_dict(self) -> dict:
-        """Convert panel to dictionary for serialization."""
+        """Convert panel to dictionary."""
         return {
             "ticker": self.ticker.to_dict(),
-            "position": self.position,
-            "size": self.size,
-            "rotation": self.rotation,
+            "position": list(self.position),
+            "size": list(self.size),
+            "rotation": list(self.rotation),
             "is_selected": self.is_selected,
             "is_highlighted": self.is_highlighted,
         }
@@ -54,14 +113,19 @@ class TickerPanel:
     @classmethod
     def from_dict(cls, data: dict) -> TickerPanel:
         """Create a panel from a dictionary."""
-        ticker = Ticker.from_dict(data["ticker"])
         return cls(
-            ticker=ticker,
+            ticker=Ticker.from_dict(data["ticker"]),
             position=tuple(data["position"]),
             size=tuple(data["size"]),
             rotation=tuple(data["rotation"]),
-            is_selected=data.get("is_selected", False),
-            is_highlighted=data.get("is_highlighted", False),
+            is_selected=data["is_selected"],
+            is_highlighted=data["is_highlighted"],
+        )
+
+    def __repr__(self) -> str:
+        return (
+            f"TickerPanel({self.ticker.symbol}: ${self.ticker.price:.2f} "
+            f"at {self.position})"
         )
 
 
@@ -69,47 +133,47 @@ class TickerPanel:
 class TickerBoard:
     """A board containing multiple ticker panels."""
 
-    panels: List[TickerPanel] = field(default_factory=list)
-    position: tuple = (0.0, 1.6, -2.0)
+    name: str = "Board 1"
+    position: tuple = (0.0, 1.6, 0.0)
+    size: tuple = (10.0, 6.0, 0.05)
     rotation: tuple = (0.0, 0.0, 0.0)
-    panel_spacing: float = 1.2
-    panel_size: tuple = (1.0, 0.6, 0.05)
-    is_visible: bool = True
-    is_locked: bool = False
+    panels: List[TickerPanel] = field(default_factory=list)
 
-    def add_panel(self, ticker: Ticker, index: Optional[int] = None) -> TickerPanel:
-        """Add a ticker panel to the board."""
-        panel = TickerPanel(
-            ticker=ticker,
-            size=self.panel_size,
-            position=self._calculate_panel_position(len(self.panels)),
-        )
-        if index is not None:
-            self.panels.insert(index, panel)
-        else:
-            self.panels.append(panel)
-        return panel
+    def add_panel(self, panel: TickerPanel) -> None:
+        """Add a panel to this board."""
+        self.panels.append(panel)
 
-    def remove_panel(self, ticker_symbol: str) -> bool:
+    def remove_panel(self, symbol: str) -> bool:
         """Remove a panel by ticker symbol."""
         for i, panel in enumerate(self.panels):
-            if panel.ticker.symbol == ticker_symbol:
+            if panel.ticker.symbol == symbol:
                 self.panels.pop(i)
                 return True
         return False
 
-    def update_panel(self, ticker_symbol: str, ticker: Ticker) -> bool:
-        """Update a panel with new ticker data."""
-        for panel in self.panels:
-            if panel.ticker.symbol == ticker_symbol:
-                panel.update(ticker)
-                return True
-        return False
-
-    def get_panel(self, ticker_symbol: str) -> Optional[TickerPanel]:
+    def get_panel(self, symbol: str) -> Optional[TickerPanel]:
         """Get a panel by ticker symbol."""
         for panel in self.panels:
-            if panel.ticker.symbol == ticker_symbol:
+            if panel.ticker.symbol == symbol:
+                return panel
+        return None
+
+    def update_panel(self, symbol: str, new_ticker: Ticker) -> bool:
+        """Update a panel with a new ticker."""
+        panel = self.get_panel(symbol)
+        if panel:
+            panel.update_ticker(new_ticker)
+            return True
+        return False
+
+    def get_all_ticker_symbols(self) -> List[str]:
+        """Get all ticker symbols on this board."""
+        return [panel.ticker.symbol for panel in self.panels]
+
+    def get_panel_at_position(self, position: tuple) -> Optional[TickerPanel]:
+        """Get the panel at a specific position."""
+        for panel in self.panels:
+            if panel.position == position:
                 return panel
         return None
 
@@ -120,67 +184,33 @@ class TickerBoard:
                 return panel
         return None
 
-    def select_panel(self, ticker_symbol: str) -> bool:
-        """Select a panel by ticker symbol."""
-        for panel in self.panels:
-            panel.is_selected = False
-        for panel in self.panels:
-            if panel.ticker.symbol == ticker_symbol:
-                panel.is_selected = True
-                return True
-        return False
-
-    def highlight_panel(self, ticker_symbol: str, duration: float = 2.0) -> bool:
-        """Highlight a panel for a duration."""
-        for panel in self.panels:
-            if panel.ticker.symbol == ticker_symbol:
-                panel.is_highlighted = True
-                return True
-        return False
-
-    def clear_highlights(self) -> None:
-        """Clear all panel highlights."""
-        for panel in self.panels:
-            panel.is_highlighted = False
-
-    def _calculate_panel_position(self, index: int) -> tuple:
-        """Calculate the position for a panel based on its index."""
-        x = (index - (len(self.panels) - 1) / 2) * self.panel_spacing
-        return (x, 0.0, 0.0)
+    def clear_panels(self) -> None:
+        """Remove all panels from this board."""
+        self.panels.clear()
 
     def to_dict(self) -> dict:
-        """Convert board to dictionary for serialization."""
+        """Convert board to dictionary."""
         return {
+            "name": self.name,
+            "position": list(self.position),
+            "size": list(self.size),
+            "rotation": list(self.rotation),
             "panels": [panel.to_dict() for panel in self.panels],
-            "position": self.position,
-            "rotation": self.rotation,
-            "panel_spacing": self.panel_spacing,
-            "panel_size": self.panel_size,
-            "is_visible": self.is_visible,
-            "is_locked": self.is_locked,
         }
 
     @classmethod
     def from_dict(cls, data: dict) -> TickerBoard:
         """Create a board from a dictionary."""
-        board = cls(
+        return cls(
+            name=data["name"],
             position=tuple(data["position"]),
+            size=tuple(data["size"]),
             rotation=tuple(data["rotation"]),
-            panel_spacing=data.get("panel_spacing", 1.2),
-            panel_size=tuple(data.get("panel_size", (1.0, 0.6, 0.05))),
-            is_visible=data.get("is_visible", True),
-            is_locked=data.get("is_locked", False),
+            panels=[TickerPanel.from_dict(p) for p in data["panels"]],
         )
-        board.panels = [TickerPanel.from_dict(p) for p in data["panels"]]
-        return board
 
-    def get_status(self) -> dict:
-        """Get board status."""
-        return {
-            "panel_count": len(self.panels),
-            "position": self.position,
-            "rotation": self.rotation,
-            "is_visible": self.is_visible,
-            "is_locked": self.is_locked,
-            "tickers": [panel.ticker.symbol for panel in self.panels],
-        }
+    def __repr__(self) -> str:
+        return (
+            f"TickerBoard({self.name}: {len(self.panels)} panels, "
+            f"size={self.size})"
+        )
