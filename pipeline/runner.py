@@ -80,6 +80,10 @@ def _check_ollama_model(model: str) -> None:
     import urllib.request
     import urllib.error
     base_url = os.environ.get("OLLAMA_HOST", "http://localhost:11434")
+    # Normalize: add http:// if missing, replace bind address with localhost
+    if not base_url.startswith("http"):
+        base_url = f"http://{base_url}"
+    base_url = base_url.replace("://0.0.0.0", "://localhost")
 
     # 1. Check Ollama is running
     try:
@@ -157,6 +161,9 @@ def _check_ollama_heartbeat(model: str, _last_ok: list = [0.0]) -> str:
 
     import urllib.request
     base_url = os.environ.get("OLLAMA_HOST", "http://localhost:11434")
+    if not base_url.startswith("http"):
+        base_url = f"http://{base_url}"
+    base_url = base_url.replace("://0.0.0.0", "://localhost")
     try:
         resp = urllib.request.urlopen(f"{base_url}/api/ps", timeout=5)
         ps_data = json.loads(resp.read())
