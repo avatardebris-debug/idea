@@ -52,12 +52,16 @@ class IdeaPlannerAgent(AgentProcess):
         master_plan = self.read_state_file("state/master_plan.md")
         phase_1_spec = self._extract_phase(master_plan, 1)
 
+        from datetime import datetime, timezone
+
         # Save current idea state
         self.write_json_state("state/current_idea.json", {
             "title": idea_title,
             "description": idea_description[:500],
             "status": "planning",
+            "phase": 1,
             "total_phases": self._count_phases(master_plan),
+            "started_at": datetime.now(timezone.utc).isoformat(),
         })
 
         # Send Phase 1 to Phase Planner

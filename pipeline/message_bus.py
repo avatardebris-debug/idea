@@ -265,6 +265,42 @@ class MessageBus:
             self._write_lines(path, [])
             return count
 
+    def compact(self, agent_name: str) -> int:
+        """Remove all 'done' and 'failed' messages from a queue file.
+
+        Keeps only 'pending' and 'processing' messages.
+        Called periodically by the runner to prevent queue files growing forever.
+        Returns the number of messages removed.
+        """
+        path = self._queue_path(agent_name)
+        if not path.exists():
+            return 0
+        with _FileLock(path):
+            lines = self._read_lines(path)
+            kept = []
+            removed = 0
+            for line in lines:
+                try:
+                    d = json.loads(line)
+                    if d.get("status") in ("pending", "processing"):
+                        kept.append(line)
+                    else:
+                        removed += 1
+                except json.JSONDecodeError:
+                    removed += 1  # malformed lines get cleaned up too
+            if removed > 0:
+                self._write_lines(path, kept)
+            return removed
+
+    def compact_all(self) -> int:
+        """Compact all agent queues. Returns total messages removed."""
+        total = 0
+        if QUEUES_DIR.exists():
+            for qf in QUEUES_DIR.glob("*.jsonl"):
+                agent = qf.stem
+                total += self.compact(agent)
+        return total
+
     # --- Internal helpers ---
 
     def _update_status(self, agent_name: str, msg_id: str, new_status: str) -> None:

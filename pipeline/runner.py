@@ -56,6 +56,11 @@ AGENT_ROLES = [
 ]
 
 
+# Maximum wall-clock time per project before force-completing (minutes).
+# 90 min = enough for 3 phases × ~25 min each.  Prevents any single project
+# from monopolizing an unattended pipeline run.
+PROJECT_TIME_BUDGET = 90
+
 # ---------------------------------------------------------------------------
 # Pipeline state management
 # ---------------------------------------------------------------------------
@@ -335,6 +340,9 @@ def _rebuild_queues_from_state(bus: MessageBus) -> int:
     so the pipeline works serially through incomplete projects rather than
     dumping all of them into the queue at once.
 
+    Also enforces a wall-clock budget per project — any project that has been
+    running longer than PROJECT_TIME_BUDGET minutes is force-completed.
+
     Returns the number of projects re-queued (0 or 1).
     """
     if bus.has_active_work():
@@ -362,8 +370,29 @@ def _rebuild_queues_from_state(bus: MessageBus) -> int:
         title  = state.get("title", project_dir.name)
         slug   = project_dir.name
 
-        if status in ("", "complete"):
+        if status in ("", "complete", "budget_exceeded"):
             continue
+
+        # --- Budget enforcement ---
+        # If the project has a started_at timestamp and has exceeded the
+        # wall-clock budget, force-complete it so the pipeline moves on.
+        started_at = state.get("started_at")
+        if started_at:
+            try:
+                from datetime import datetime as _dt, timezone as _tz
+                start = _dt.fromisoformat(started_at)
+                elapsed_min = (datetime.now(timezone.utc) - start).total_seconds() / 60
+                if elapsed_min > PROJECT_TIME_BUDGET:
+                    state["status"] = "budget_exceeded"
+                    state["budget_note"] = (
+                        f"Force-completed after {elapsed_min:.0f} min "
+                        f"(budget: {PROJECT_TIME_BUDGET} min)"
+                    )
+                    state_file.write_text(json.dumps(state, indent=2), encoding="utf-8")
+                    print(f"  💰 Budget exceeded for '{title}' ({elapsed_min:.0f}m > {PROJECT_TIME_BUDGET}m) — skipping")
+                    continue
+            except Exception:
+                pass  # Can't parse timestamp — proceed normally
 
         # Skip projects whose validator has already hit the stall limit —
         # these should have been force-advanced by the manager, but if the
@@ -570,6 +599,12 @@ def run_pipeline(
                 restarted = supervisor.restart_dead()
                 if restarted:
                     supervisor.save_registry()
+
+                # Compact queues periodically (every ~30 health checks ≈ 30 min)
+                if _status_count > 0 and _status_count % 30 == 0:
+                    compacted = bus.compact_all()
+                    if compacted > 0:
+                        print(f"  🧹 Compacted {compacted} stale messages from queues")
 
                 # Check if all queues are empty AND all ideas done
                 all_empty = bus.all_queues_empty()

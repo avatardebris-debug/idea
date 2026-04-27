@@ -63,6 +63,37 @@ class PhasePlannerAgent(AgentProcess):
 
         result = self.call_agent(task=task_prompt, verbose=False)
 
+        # --- Task count guardrail ---
+        # Cap at 8 tasks per phase to prevent executor overload.
+        # The advantage_player_cardgame project generated 33 tasks for Phase 1,
+        # which caused infinite validation loops.
+        MAX_TASKS_PER_PHASE = 8
+        import logging
+        logger = logging.getLogger(__name__)
+
+        tasks_content = self.read_state_file(tasks_path)
+        if tasks_content:
+            lines = tasks_content.split("\n")
+            task_indices = [i for i, l in enumerate(lines) if l.strip().startswith("- [ ]")]
+
+            if len(task_indices) > MAX_TASKS_PER_PHASE:
+                logger.warning(
+                    "[phase_planner] Phase %d has %d tasks (limit %d) — truncating",
+                    phase_num, len(task_indices), MAX_TASKS_PER_PHASE,
+                )
+                # Keep everything up to the end of the last allowed task
+                # (which starts at task_indices[MAX_TASKS_PER_PHASE-1])
+                # The task block ends at the line before the next task, or EOF
+                last_keep = task_indices[MAX_TASKS_PER_PHASE - 1]
+                if len(task_indices) > MAX_TASKS_PER_PHASE:
+                    cut_at = task_indices[MAX_TASKS_PER_PHASE]
+                else:
+                    cut_at = len(lines)
+
+                truncated = "\n".join(lines[:cut_at])
+                truncated += f"\n\n<!-- {len(task_indices) - MAX_TASKS_PER_PHASE} tasks removed by guardrail (max {MAX_TASKS_PER_PHASE} per phase) -->\n"
+                self.write_state_file(tasks_path, truncated)
+
         # Write phase spec for reference
         self.write_state_file(f"phases/phase_{phase_num}/spec.md", phase_spec)
 
