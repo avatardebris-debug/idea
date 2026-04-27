@@ -27,6 +27,11 @@ from datetime import datetime, timezone
 
 _ANSI_ESCAPE = re.compile(r'(?:\x1B[@-Z\\-_]|[\x80-\x9A\x9C-\x9F]|(?:\x1B\[|\x9B)[0-?]*[ -/]*[@-~]|\x1B\][^\x07\x1B]*(?:\x07|\x1B\\))')
 
+# Suppress Jupyter/cloud terminal escape sequences (^[]11;rgb:... etc.)
+# These are OSC color query responses that pollute output in web terminals.
+if not sys.stdout.isatty():
+    os.environ.setdefault("TERM", "dumb")
+
 def _clean(text: str) -> str:
     """Strip ANSI/OSC escape sequences from a string."""
     return _ANSI_ESCAPE.sub('', text)
@@ -60,6 +65,110 @@ AGENT_ROLES = [
 # 90 min = enough for 3 phases × ~25 min each.  Prevents any single project
 # from monopolizing an unattended pipeline run.
 PROJECT_TIME_BUDGET = 90
+
+# ---------------------------------------------------------------------------
+# Ollama health checks
+# ---------------------------------------------------------------------------
+
+def _check_ollama_model(model: str) -> None:
+    """Pre-flight check: verify Ollama is reachable and the model is available.
+
+    Catches common misconfigurations (wrong model name, Ollama not running,
+    model not on GPU) BEFORE starting agents, preventing silent hour-long
+    failures.
+    """
+    import urllib.request
+    import urllib.error
+    base_url = os.environ.get("OLLAMA_HOST", "http://localhost:11434")
+
+    # 1. Check Ollama is running
+    try:
+        resp = urllib.request.urlopen(f"{base_url}/api/tags", timeout=5)
+        data = json.loads(resp.read())
+    except Exception as e:
+        print(f"\n  ❌ Ollama not reachable at {base_url}: {e}")
+        print(f"     Start Ollama first: ollama serve &")
+        sys.exit(1)
+
+    # 2. Check model exists
+    available = [m.get("name", "") for m in data.get("models", [])]
+    # Ollama uses "model:tag" format; match with and without tag
+    model_base = model.split(":")[0]
+    found = any(model_base in m for m in available)
+    if not found:
+        print(f"\n  ❌ Model '{model}' not found in Ollama.")
+        print(f"     Available: {', '.join(available) or '(none)'}")
+        print(f"     Pull it:   ollama pull {model}")
+        sys.exit(1)
+
+    # 3. Warm up: trigger a tiny inference to load model into VRAM
+    print(f"  Model:    {model} (warming up...)", end="", flush=True)
+    try:
+        req = urllib.request.Request(
+            f"{base_url}/api/generate",
+            data=json.dumps({
+                "model": model,
+                "prompt": "/no_think say OK",
+                "stream": False,
+                "options": {"num_predict": 5},
+            }).encode(),
+            headers={"Content-Type": "application/json"},
+        )
+        resp = urllib.request.urlopen(req, timeout=120)
+        result = json.loads(resp.read())
+        # Check if response came back
+        if result.get("response", "").strip():
+            print(" ✅")
+        else:
+            print(" ⚠️  (empty response)")
+    except Exception as e:
+        print(f" ⚠️  warmup failed: {e}")
+
+    # 4. Check GPU allocation
+    try:
+        resp = urllib.request.urlopen(f"{base_url}/api/ps", timeout=5)
+        ps_data = json.loads(resp.read())
+        models_loaded = ps_data.get("models", [])
+        if models_loaded:
+            for m in models_loaded:
+                vram_gb = m.get("size_vram", 0) / 1e9
+                total_gb = m.get("size", 0) / 1e9
+                name = m.get("name", "?")
+                if vram_gb > 0.5:
+                    print(f"  GPU:      {name} — {vram_gb:.1f}GB VRAM ✅")
+                elif total_gb > 0:
+                    print(f"  ⚠️  GPU:   {name} — {vram_gb:.1f}GB VRAM / {total_gb:.1f}GB total — RUNNING ON CPU!")
+                    print(f"             Pipeline will be ~10-20x slower than GPU.")
+        else:
+            print(f"  ⚠️  GPU:   No models loaded after warmup — check Ollama GPU config")
+    except Exception:
+        pass  # Non-critical
+
+
+def _check_ollama_heartbeat(model: str, _last_ok: list = [0.0]) -> str:
+    """Quick Ollama liveness check. Returns status string for display.
+
+    Only pings once every 5 minutes (tracked via _last_ok mutable default).
+    """
+    now = time.time()
+    if now - _last_ok[0] < 300:  # Only check every 5 min
+        return ""
+    _last_ok[0] = now
+
+    import urllib.request
+    base_url = os.environ.get("OLLAMA_HOST", "http://localhost:11434")
+    try:
+        resp = urllib.request.urlopen(f"{base_url}/api/ps", timeout=5)
+        ps_data = json.loads(resp.read())
+        models = ps_data.get("models", [])
+        if models:
+            vram = models[0].get("size_vram", 0) / 1e9
+            return f"gpu={vram:.0f}GB"
+        else:
+            return "gpu=IDLE"
+    except Exception:
+        return "gpu=ERR"
+
 
 # ---------------------------------------------------------------------------
 # Pipeline state management
@@ -805,6 +914,10 @@ def run_pipeline(
     run_metrics = RunMetrics.start(provider=provider, model=model)
     print(f"  Prompts:  {run_metrics.prompt_version}")
 
+    # --- Ollama pre-flight check ---
+    if provider == "ollama":
+        _check_ollama_model(model)
+
     # Start all agents
     print(f"\n  Starting agents...")
     supervisor = AgentSupervisor(provider, model)
@@ -909,9 +1022,16 @@ def run_pipeline(
                     pass
                 task_str = f" {tasks_done}/{tasks_total}✓" if tasks_total else ""
 
+                # Ollama GPU heartbeat (checks every 5 min)
+                gpu_str = ""
+                if provider == "ollama":
+                    gpu_status = _check_ollama_heartbeat(model)
+                    if gpu_status:
+                        gpu_str = f" {gpu_status}"
+
                 status_line = _clean(
                     f"  [{elapsed_m:.0f}m] agents={running_agents}/{len(AGENT_ROLES)} "
-                    f"pending={pending_total} phase={phase}{task_str}{title_str}"
+                    f"pending={pending_total} phase={phase}{task_str}{gpu_str}{title_str}"
                 )
                 # Always print on a new line — ’\r’ tricks break on cloud/Windows terminals.
                 # Throttle to every 4 checks (~4 min) to keep output readable.
