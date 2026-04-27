@@ -742,6 +742,14 @@ def run_pipeline(
     # Determine what to work on
     has_work = False
 
+    # Reset abandoned 'processing' messages from previous run.
+    # After a graceful shutdown, agents leave in-flight messages as 'processing'
+    # in queue files.  Without resetting, has_active_work() returns True and
+    # _rebuild_queues_from_state bails, preventing any work from being re-queued.
+    stale = bus.reset_stale_processing()
+    if stale:
+        print(f"  🔄 Reset {stale} stale message(s) from previous run")
+
     if resume:
         # Resume always acts like --from-list: keep running until ALL projects
         # are done, not just the first queue drain.  This prevents the runner

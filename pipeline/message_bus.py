@@ -301,6 +301,36 @@ class MessageBus:
                 total += self.compact(agent)
         return total
 
+    def reset_stale_processing(self) -> int:
+        """Reset all 'processing' messages back to 'pending'.
+
+        Called at startup to recover messages abandoned by agents that were
+        killed mid-flight.  Without this, has_active_work() returns True
+        even though no agents are running, blocking queue rebuilds.
+
+        Returns the number of messages reset.
+        """
+        total = 0
+        if not QUEUES_DIR.exists():
+            return 0
+        for qf in QUEUES_DIR.glob("*.jsonl"):
+            with _FileLock(qf):
+                lines = self._read_lines(qf)
+                changed = False
+                for i, line in enumerate(lines):
+                    try:
+                        d = json.loads(line)
+                        if d.get("status") == "processing":
+                            d["status"] = "pending"
+                            lines[i] = json.dumps(d)
+                            changed = True
+                            total += 1
+                    except json.JSONDecodeError:
+                        continue
+                if changed:
+                    self._write_lines(qf, lines)
+        return total
+
     # --- Internal helpers ---
 
     def _update_status(self, agent_name: str, msg_id: str, new_status: str) -> None:
