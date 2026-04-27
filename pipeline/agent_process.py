@@ -282,14 +282,15 @@ class AgentProcess:
         """
         import re as _re
         # Match ## Phase 1, ### Phase 1, # Phase 1: ..., etc.
-        pattern = rf'^(#{1,4})\s+(?:.*?)?Phase\s+{phase_num}\b.*$'
+        # NOTE: {{1,4}} is required — {1,4} in rf-strings becomes a set literal!
+        pattern = rf'^(#{{1,4}})\s+(?:.*?)?Phase\s+{phase_num}\b.*$'
         match = _re.search(pattern, tasks_content, _re.MULTILINE | _re.IGNORECASE)
         if not match:
             return tasks_content  # No phase heading — assume whole file is this phase
 
         start = match.start()
         # Find the NEXT phase heading (Phase N+1, N+2, etc.)
-        next_pattern = rf'^#{1,4}\s+(?:.*?)?Phase\s+(?:{phase_num + 1}|{phase_num + 2}|{phase_num + 3})\b'
+        next_pattern = rf'^#{{1,4}}\s+(?:.*?)?Phase\s+(?:{phase_num + 1}|{phase_num + 2}|{phase_num + 3})\b'
         next_match = _re.search(next_pattern, tasks_content[match.end():], _re.MULTILINE | _re.IGNORECASE)
         if next_match:
             end = match.end() + next_match.start()

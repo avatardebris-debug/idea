@@ -420,6 +420,26 @@ def _rebuild_queues_from_state(bus: MessageBus) -> int:
         if phase_match:
             phase_num  = int(phase_match.group(1))
             phase_step = phase_match.group(2)
+
+            # --- Retroactive task guardrail ---
+            # Trim oversized task files for projects created before the guardrail.
+            MAX_TASKS = 8
+            tasks_file = project_dir / f"phases/phase_{phase_num}/tasks.md"
+            if tasks_file.exists():
+                try:
+                    from pipeline.agent_process import AgentProcess
+                    raw = tasks_file.read_text(encoding="utf-8")
+                    scoped = AgentProcess._extract_phase_tasks(raw, phase_num)
+                    lines = scoped.split("\n")
+                    task_indices = [i for i, l in enumerate(lines) if l.strip().startswith("- [ ]") or l.strip().startswith("- [x]")]
+                    if len(task_indices) > MAX_TASKS:
+                        cut_at = task_indices[MAX_TASKS]
+                        trimmed = "\n".join(lines[:cut_at])
+                        trimmed += f"\n\n<!-- {len(task_indices) - MAX_TASKS} tasks removed by retroactive guardrail -->\n"
+                        tasks_file.write_text(trimmed, encoding="utf-8")
+                        print(f"  ✂️  Trimmed '{title}' phase {phase_num}: {len(task_indices)} → {MAX_TASKS} tasks")
+                except Exception:
+                    pass
         elif status == "planning":
             # Was in initial idea planning — restart from idea_planner
             msg = Message.create(
@@ -847,9 +867,24 @@ def run_pipeline(
                 title = idea_state.get("title", "")
                 title_str = f" | [{title[:28]}]" if title else ""
 
-                # Task progress (written by executor/validator)
-                tasks_done  = idea_state.get("tasks_done")
-                tasks_total = idea_state.get("tasks_total")
+                # --- Live task progress from tasks.md (not stale JSON) ---
+                # The executor only writes tasks_done/tasks_total once at start.
+                # We re-read the actual file every tick for live progress.
+                tasks_done, tasks_total = 0, 0
+                try:
+                    slug = idea_state.get("_slug", "")
+                    phase_num = idea_state.get("phase", 1)
+                    if slug:
+                        tasks_file = PIPELINE_DIR / "projects" / slug / f"phases/phase_{phase_num}/tasks.md"
+                        if tasks_file.exists():
+                            raw = tasks_file.read_text(encoding="utf-8")
+                            # Scope to current phase only (some files have all phases)
+                            from pipeline.agent_process import AgentProcess
+                            scoped = AgentProcess._extract_phase_tasks(raw, phase_num)
+                            tasks_total = len(re.findall(r'^- \[[ x]\]', scoped, re.MULTILINE))
+                            tasks_done  = len(re.findall(r'^- \[x\]', scoped, re.MULTILINE | re.IGNORECASE))
+                except Exception:
+                    pass
                 task_str = f" {tasks_done}/{tasks_total}✓" if tasks_total else ""
 
                 status_line = _clean(
