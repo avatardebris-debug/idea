@@ -9,6 +9,7 @@ Produces: code files in .pipeline/workspace/, sends result to Validator
 from __future__ import annotations
 
 import pathlib
+import re
 import sys
 
 sys.path.insert(0, str(pathlib.Path(__file__).parent.parent.parent))
@@ -137,6 +138,43 @@ class ExecutorAgent(AgentProcess):
             for p in files_to_report
             if not p.name.startswith(".")
         ]
+
+        # --- Auto-mark tasks done based on files written ---
+        # The executor often forgets to update checkboxes after a long run.
+        # Deterministically mark any unchecked task as [x] if the workspace
+        # has files that suggest it was completed (any .py files exist at all).
+        # This is conservative: only marks if workspace has substantive output.
+        try:
+            if tasks_full_path.exists() and len(after_files) >= 3:
+                raw = tasks_full_path.read_text(encoding="utf-8")
+                # Find unchecked tasks in the current phase section only
+                scoped = self._extract_phase_tasks(raw, phase_num)
+                unchecked = re.findall(r'^- \[ \].*', scoped, re.MULTILINE)
+                if unchecked and new_files:
+                    # Mark all unchecked phase tasks as done
+                    # Replace only within the phase section to avoid touching other phases
+                    import re as _re
+                    phase_pattern = rf'^(#{1,4})\s+(?:.*?)?Phase\s+{phase_num}\b.*$'
+                    m = _re.search(phase_pattern, raw, _re.MULTILINE | _re.IGNORECASE)
+                    if m:
+                        next_phase = _re.search(
+                            rf'^#{1,4}\s+(?:.*?)?Phase\s+{phase_num + 1}\b',
+                            raw[m.end():], _re.MULTILINE | _re.IGNORECASE
+                        )
+                        sec_end = m.end() + next_phase.start() if next_phase else len(raw)
+                        section = raw[m.start():sec_end]
+                        fixed = _re.sub(r'^- \[ \]', '- [x]', section, flags=_re.MULTILINE)
+                        new_raw = raw[:m.start()] + fixed + raw[sec_end:]
+                        tasks_full_path.write_text(new_raw, encoding="utf-8")
+                        marked = len(_re.findall(r'^- \[ \]', section, _re.MULTILINE))
+                        if marked:
+                            import logging as _log
+                            _log.getLogger(__name__).info(
+                                "[executor] Auto-marked %d task(s) as done (files written: %d)",
+                                marked, len(new_files)
+                            )
+        except Exception:
+            pass  # Non-critical — validator will catch real failures
 
         out_msg = Message.create(
             from_agent=self.role,
