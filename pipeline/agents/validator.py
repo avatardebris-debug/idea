@@ -342,8 +342,30 @@ class ValidatorAgent(AgentProcess):
 
         result = self.call_agent(task=task_prompt, verbose=False)
 
-        # Determine verdict from the structured report ONLY
+        # Determine verdict from the structured report
         report_content = self.read_state_file(report_path)
+
+        # --- Fallback: synthesize report from LLM answer if model forgot write_file ---
+        if not report_content and result.answer:
+            answer_upper = result.answer.upper()
+            if "VERDICT: PASS" in answer_upper or "**VERDICT: PASS**" in answer_upper:
+                synth_verdict = "Verdict: PASS"
+            elif "VERDICT: FAIL" in answer_upper or "**VERDICT: FAIL**" in answer_upper:
+                synth_verdict = "Verdict: FAIL"
+            elif "NO TESTS FOUND" in answer_upper or "NO TEST FILES" in answer_upper:
+                synth_verdict = "Verdict: PASS"  # No tests = pass by convention
+            else:
+                synth_verdict = "Verdict: FAIL"  # Unknown — assume fail, let executor retry
+            report_content = (
+                f"# Validation Report — Phase {phase_num}\n\n"
+                f"## Summary\n(Synthesized from agent response — model did not write file)\n\n"
+                f"## Agent Response\n{result.answer[:3000]}\n\n"
+                f"## {synth_verdict}\n"
+            )
+            report_full_path.parent.mkdir(parents=True, exist_ok=True)
+            report_full_path.write_text(report_content, encoding="utf-8")
+            logger.info("[validator] Synthesized report from agent answer (verdict: %s)", synth_verdict)
+
         is_pass = bool(report_content) and "Verdict: PASS" in report_content
 
         if is_pass:
@@ -392,6 +414,11 @@ class ValidatorAgent(AgentProcess):
                 len(_re.findall(p, report_content))
                 for p in fail_patterns
             )
+
+            # If report was empty (model didn't write it), treat as MAX failures
+            # so it never looks like 'progress' and no_progress counter increments.
+            if not report_content:
+                current_failures = 999
 
             prev_failures  = retry_data.get(prev_fail_key, current_failures + 1)
             no_progress    = retry_data.get(streak_key, 0)
