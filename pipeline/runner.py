@@ -298,13 +298,13 @@ def seed_from_master_list(bus: MessageBus) -> bool:
                 try:
                     state = json.loads(project_state.read_text(encoding="utf-8"))
                     status = state.get("status", "?")
-                    if status != "complete":
-                        print(f"  ⏭  Skipping '{title}' — already in progress ({status}), resuming from queue")
-                        _seeded_this_session.add(title)  # don't try again this session
+                    if status in ("complete", "budget_exceeded"):
+                        # Finished — skip entirely
+                        _seeded_this_session.add(title)
                         continue
                     else:
-                        # Completed — skip entirely
-                        _seeded_this_session.add(title)
+                        print(f"  ⏭  Skipping '{title}' — already in progress ({status}), resuming from queue")
+                        _seeded_this_session.add(title)  # don't try again this session
                         continue
                 except Exception:
                     pass  # Can't read state — seed it fresh
@@ -373,25 +373,14 @@ def _rebuild_queues_from_state(bus: MessageBus) -> int:
         if status in ("", "complete", "budget_exceeded"):
             continue
 
-        # --- Budget enforcement ---
-        # If the project has a started_at timestamp and has exceeded the
-        # wall-clock budget, force-complete it so the pipeline moves on.
-        started_at = state.get("started_at")
-        if started_at:
-            try:
-                start = datetime.fromisoformat(started_at)
-                elapsed_min = (datetime.now(timezone.utc) - start).total_seconds() / 60
-                if elapsed_min > PROJECT_TIME_BUDGET:
-                    state["status"] = "budget_exceeded"
-                    state["budget_note"] = (
-                        f"Force-completed after {elapsed_min:.0f} min "
-                        f"(budget: {PROJECT_TIME_BUDGET} min)"
-                    )
-                    state_file.write_text(json.dumps(state, indent=2), encoding="utf-8")
-                    print(f"  💰 Budget exceeded for '{title}' ({elapsed_min:.0f}m > {PROJECT_TIME_BUDGET}m) — skipping")
-                    continue
-            except Exception:
-                pass  # Can't parse timestamp — proceed normally
+        # --- Budget enforcement: reset started_at to NOW ---
+        # Budget measures per-SESSION time, not total project lifetime.
+        # On a cold restart, every project's old started_at would be hours
+        # old, causing everything to get budget_exceeded immediately.
+        # Reset the clock so budget enforcement works correctly during THIS
+        # session's health-check loop.
+        state["started_at"] = datetime.now(timezone.utc).isoformat()
+        state_file.write_text(json.dumps(state, indent=2), encoding="utf-8")
 
         # Skip projects whose validator has already hit the stall limit —
         # these should have been force-advanced by the manager, but if the
@@ -857,6 +846,24 @@ def run_pipeline(
                 all_empty = bus.all_queues_empty()
                 # Find the most recently updated project's current_idea.json
                 idea_state = _get_active_idea_state(PIPELINE_DIR)
+
+                # --- Per-session budget enforcement ---
+                # If the active project has been running longer than
+                # PROJECT_TIME_BUDGET, force-complete it so we move on.
+                _active_slug = idea_state.get("_slug", "")
+                _active_started = idea_state.get("started_at", "")
+                if _active_slug and _active_started and idea_state.get("status", "") not in ("", "complete", "budget_exceeded"):
+                    try:
+                        _start = datetime.fromisoformat(_active_started)
+                        _elapsed = (datetime.now(timezone.utc) - _start).total_seconds() / 60
+                        if _elapsed > PROJECT_TIME_BUDGET:
+                            _proj_file = PIPELINE_DIR / "projects" / _active_slug / "state" / "current_idea.json"
+                            idea_state["status"] = "budget_exceeded"
+                            idea_state["budget_note"] = f"Force-completed after {_elapsed:.0f} min (budget: {PROJECT_TIME_BUDGET} min)"
+                            _proj_file.write_text(json.dumps(idea_state, indent=2), encoding="utf-8")
+                            print(f"  💰 Budget exceeded for '{idea_state.get('title', _active_slug)}' ({_elapsed:.0f}m > {PROJECT_TIME_BUDGET}m) — skipping")
+                    except Exception:
+                        pass
 
                 running_agents = sum(1 for s in health.values() if s == "running")
 
