@@ -779,6 +779,13 @@ def run_pipeline(
         else:
             has_work = seed_from_master_list(bus)
 
+    # Final safety net: if queues have pending messages (from stale-reset or
+    # a previous run), there IS work — just start the agents and let them process.
+    if not has_work and bus.has_active_work():
+        pending_total = sum(bus.queue_depth(r) for r in AGENT_ROLES)
+        print(f"  🔄 Found {pending_total} pending queue message(s) — starting agents")
+        has_work = True
+
     if not has_work:
         print("\n  ✗ Nothing to do. Provide an idea, use --from-list, or --resume.")
         print("    python pipeline/runner.py \"Your idea here\"")
