@@ -20,7 +20,7 @@ from pipeline.message_bus import Message
 
 class ReviewerAgent(AgentProcess):
     role = "reviewer"
-    max_steps = 20
+    max_steps = 25
     temperature = 0.3   # structured assessment — slightly creative but mostly deterministic
     think = False       # follows fixed review template — no CoT needed
 

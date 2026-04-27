@@ -280,7 +280,7 @@ def auto_install_workspace_deps(workspace: pathlib.Path) -> list[str]:
 
 class ValidatorAgent(AgentProcess):
     role = "validator"
-    max_steps = 12
+    max_steps = 25  # list_tree + read N files + pytest + ruff + write_file = easily 15+
     temperature = 0.2   # deterministic test running
     think = False       # mechanical validation — no CoT needed
 
@@ -322,22 +322,26 @@ class ValidatorAgent(AgentProcess):
             f"All code is in: {workspace_path}\n"
             f"Files written: {', '.join(files_written) if files_written else '(check workspace)'}\n\n"
             f"## Phase {phase_num} Task List (for acceptance criteria)\n{tasks_content}\n\n"
-            f"## Your Job\n"
-            f"NOTE: Dependencies and a conftest.py (sys.path fix) have already been set up.\n"
-            f"If imports still fail, run: `pip install -e {workspace_path}` then retry.\n\n"
-            f"1. Use `list_tree` on {workspace_path} to see all files.\n"
-            f"2. Read each code file to verify it is correct.\n"
-            f"3. Run tests with EXACTLY this command:\n"
+            f"## Your Job — BE EFFICIENT (you have limited steps)\n"
+            f"NOTE: Dependencies and a conftest.py (sys.path fix) have already been set up.\n\n"
+            f"STEP 1: Run tests FIRST (most important):\n"
             f"   `cd {workspace_path} && PYTHONPATH={workspace_path} python -m pytest -v --tb=short 2>&1`\n"
-            f"   If no test files exist, note 'No tests found' and give PASS.\n"
-            f"4. Run lint: `cd {workspace_path} && python -m ruff check . --quiet`\n"
-            f"   (skip if ruff not installed — NOT a failure reason).\n"
-            f"5. Check each acceptance criterion from the task list.\n"
-            f"6. Write your validation report to `{report_full_path}`.\n"
-            f"7. End with exactly: **Verdict: PASS** or **Verdict: FAIL**.\n"
-            f"   PASS if tests pass (or no tests exist) and core files are present.\n"
-            f"   FAIL only if tests error/fail OR core required files are missing.\n"
-            f"8. Say DONE.\n"
+            f"   If no test files exist, note 'No tests found'.\n\n"
+            f"STEP 2: Use `list_tree` on {workspace_path} to verify key files exist.\n"
+            f"   Only read individual files if tests FAIL and you need to diagnose why.\n\n"
+            f"STEP 3: Write your validation report to `{report_full_path}`.\n"
+            f"   Use this exact format:\n"
+            f"   ```\n"
+            f"   # Validation Report — Phase {phase_num}\n"
+            f"   ## Summary\n"
+            f"   - Tests: X passed, Y failed\n"
+            f"   ## Verdict: PASS\n"
+            f"   ```\n"
+            f"   PASS if tests pass or no tests exist AND core files are present.\n"
+            f"   FAIL only if tests error/fail OR required files are missing.\n\n"
+            f"STEP 4: Say DONE and state your verdict.\n"
+            f"\nCRITICAL: You MUST call write_file to save the report to `{report_full_path}`. "
+            f"Do not just print it — actually write it to the file.\n"
         )
 
         result = self.call_agent(task=task_prompt, verbose=False)
