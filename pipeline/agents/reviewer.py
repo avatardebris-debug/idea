@@ -108,28 +108,31 @@ class ReviewerAgent(AgentProcess):
             if re.search(r'^[-*]\s+', raw, re.MULTILINE):
                 non_blocking_notes = raw
 
-        # Always send to Manager
-        out_msg = Message.create(
-            from_agent=self.role,
-            to_agent="manager",
-            type="result",
-            payload={
-                "phase": phase_num,
+        # --- Write review verdict to state (deterministic routing by runner) ---
+        # Instead of sending to the manager LLM, we write structured review data
+        # directly to current_idea.json. The runner's _tick_project() reads this
+        # and makes the routing decision deterministically.
+        try:
+            idea_state = self.read_json_state("state/current_idea.json")
+            idea_state["review_result"] = {
+                "blocking_bugs": blocking_count,
                 "review_path": review_path,
                 "tasks_path": tasks_path,
                 "workspace_path": workspace_path,
                 "files_written": files_written,
-                "blocking_bugs": blocking_count,
                 "non_blocking_notes": non_blocking_notes[:1500],
                 "review_content_preview": review_content[:1500],
-                "idea_slug": idea_slug,
-            },
-        )
+            }
+            idea_state["status"] = f"phase_{phase_num}_reviewed"
+            self.write_json_state("state/current_idea.json", idea_state)
+        except Exception as e:
+            import logging
+            logging.getLogger(__name__).error("[reviewer] Failed to write review verdict: %s", e)
 
         return AgentOutput(
             success=True,
             answer=result.answer,
-            outgoing=[out_msg],
+            outgoing=[],  # No outgoing messages — runner handles routing
             tokens_used=result.tokens_used,
             steps_used=result.steps_used,
         )

@@ -39,7 +39,10 @@ class ManagerAgent(AgentProcess):
         if source == "ideator" or msg.from_agent == "ideator":
             outgoing = self._handle_ideator_result(msg)
         elif msg.from_agent == "reviewer":
-            outgoing = self._handle_review_result(msg)
+            # Review routing is now handled deterministically by the runner's
+            # _tick_project() function.  If the reviewer still sends us a
+            # message (shouldn't happen post-migration), just log and drop it.
+            self._log_decision(msg, [], note="Review routing now handled by runner — ignored")
         elif msg.type == "signal":
             outgoing = self._handle_pipeline_signal(msg)
         else:
@@ -53,138 +56,6 @@ class ManagerAgent(AgentProcess):
             answer=f"Processed {msg.type} from {msg.from_agent}, sent {len(outgoing)} messages",
             outgoing=outgoing,
         )
-
-    # --- Review result handling ---
-
-    def _handle_review_result(self, msg: Message) -> list[Message]:
-        phase_num = msg.payload.get("phase", 1)
-        idea_slug = msg.payload.get("idea_slug", self._current_slug)
-        blocking_bugs = msg.payload.get("blocking_bugs", 0)
-        review_content = msg.payload.get("review_content_preview", "")
-        non_blocking_notes = msg.payload.get("non_blocking_notes", "")
-        tasks_path = msg.payload.get("tasks_path", "")
-        workspace_path = msg.payload.get("workspace_path", "")
-        files_written = msg.payload.get("files_written", [])
-        review_path = msg.payload.get("review_path", "")
-        review_full_path = self._project_path(review_path) if review_path else review_path
-
-        outgoing = []
-
-        # Check for emergency rework
-        rework_indicators = sum(1 for word in ["fundamental", "architectural",
-                                                "completely wrong", "redesign",
-                                                "start over", "rewrite"]
-                                if word in review_content.lower())
-        is_emergency = rework_indicators >= 3 or blocking_bugs > 5
-
-        if is_emergency:
-            # EMERGENCY REWORK — halt and reset
-            outgoing.append(Message.create(
-                from_agent=self.role,
-                to_agent="executor",
-                type="signal",
-                payload={
-                    "signal": "EMERGENCY_REWORK",
-                    "phase": phase_num,
-                    "reason": "Review indicates major architectural issues requiring rework",
-                    "review_path": review_path,
-                    "idea_slug": idea_slug,
-                },
-                priority=0,
-            ))
-            outgoing.append(Message.create(
-                from_agent=self.role,
-                to_agent="phase_planner",
-                type="task",
-                payload={
-                    "phase": phase_num,
-                    "phase_spec": f"REWORK REQUIRED — see review at {review_full_path}",
-                    "is_rework": True,
-                    "idea_slug": idea_slug,
-                },
-                priority=0,
-            ))
-        elif blocking_bugs > 0:
-            # Increment retry counter; force-advance if cap is reached
-            retries = self._increment_phase_retries(phase_num)
-            if retries >= self.MAX_PHASE_RETRIES:
-                # Too many retries — force-advance and log a warning
-                warn_msg = (
-                    f"\n\n---\n⚠️  MANAGER OVERRIDE: Phase {phase_num} force-advanced after "
-                    f"{retries} failed fix attempts.\n"
-                    f"Remaining blocking bugs ({blocking_bugs}) are deferred as non-blocking.\n"
-                )
-                if review_full_path and str(review_full_path) != review_path:
-                    try:
-                        with open(review_full_path, "a", encoding="utf-8") as f:
-                            f.write(warn_msg)
-                    except Exception:
-                        pass
-                logger.warning(
-                    "[manager] Phase %d force-advanced after %d retries (%d bugs remain)",
-                    phase_num, retries, blocking_bugs,
-                )
-                self._reset_phase_retries(phase_num)
-                next_phase = self._advance_phase(phase_num, idea_slug)
-                if next_phase:
-                    outgoing.extend(next_phase)
-                else:
-                    self._mark_idea_complete()
-                    outgoing.extend(self._start_next_idea())
-            else:
-                # Send back to executor with fix instructions
-                outgoing.append(Message.create(
-                    from_agent=self.role,
-                    to_agent="executor",
-                    type="task",
-                    payload={
-                        "phase": phase_num,
-                        "tasks_path": tasks_path,
-                        "workspace_path": workspace_path,
-                        "fix_required": True,
-                        "review_path": review_path,
-                        "blocking_bugs": blocking_bugs,
-                        "fix_instructions": (
-                            f"Fix {blocking_bugs} blocking bugs from review (attempt {retries}/{self.MAX_PHASE_RETRIES}). "
-                            f"Read `{review_full_path}` for details."
-                        ),
-                        "idea_slug": idea_slug,
-                    },
-                ))
-        else:
-            # Clean pass — save any non-blocking notes as deferred polish tasks
-            if non_blocking_notes:
-                self._append_polish_items(phase_num, non_blocking_notes)
-
-            # Reset retry counter for this phase
-            self._reset_phase_retries(phase_num)
-
-            # Phase passes — check if more phases remain
-            next_phase = self._advance_phase(phase_num, idea_slug)
-            if next_phase:
-                outgoing.extend(next_phase)
-            else:
-                # All phases done — mark idea complete
-                self._mark_idea_complete()
-                outgoing.extend(self._start_next_idea())
-
-        # Only trigger Ideator on a clean pass — not during rework or fix cycles.
-        # Failed reviews + rework cycles would waste 2 LLM calls (ideator + triage)
-        # on a project that isn't even working yet.
-        if not is_emergency and blocking_bugs == 0:
-            outgoing.append(Message.create(
-                from_agent=self.role,
-                to_agent="ideator",
-                type="task",
-                payload={
-                    "phase": phase_num,
-                    "review_path": review_path,
-                    "trigger": "post_review",
-                    "idea_slug": idea_slug,
-                },
-            ))
-
-        return outgoing
 
     # --- Ideator result handling ---
 

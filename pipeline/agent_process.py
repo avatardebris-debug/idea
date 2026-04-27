@@ -248,7 +248,7 @@ class AgentProcess:
             existing = self.read_json_state("state/current_idea.json")
 
             # Guard: terminal states are sacred — never overwrite them
-            if existing.get("status") in ("complete", "stalled"):
+            if existing.get("status") in ("complete", "stalled", "budget_exceeded"):
                 return
 
             existing["status"] = status

@@ -468,6 +468,12 @@ def _rebuild_queues_from_state(bus: MessageBus) -> int:
                        "workspace_path": workspace_path,
                        "validation_report_path": report_path,
                        "review_path": review_path, "idea_slug": slug}
+        elif phase_step == "reviewed":
+            # Reviewer finished — deterministic routing via _tick_project
+            routed = _tick_project(bus, project_dir, state, phase_num, slug)
+            if routed:
+                return 1
+            continue
         else:
             continue  # Unknown step
 
@@ -478,6 +484,228 @@ def _rebuild_queues_from_state(bus: MessageBus) -> int:
 
     return 0  # No incomplete projects found
 
+
+# Maximum reviewer→executor round-trips per phase before force-advancing
+MAX_PHASE_RETRIES = 12
+
+
+def _tick_project(
+    bus: MessageBus,
+    project_dir: pathlib.Path,
+    state: dict,
+    phase_num: int,
+    slug: str,
+) -> bool:
+    """Deterministic state machine tick for a reviewed project.
+
+    Reads the reviewer's verdict from current_idea.json and routes:
+    - 0 blocking bugs → advance to next phase (or complete)
+    - Blocking bugs → send back to executor (up to MAX_PHASE_RETRIES)
+    - Emergency (architectural issues) → re-plan the phase
+
+    Returns True if a message was sent, False if nothing to do.
+    """
+    review = state.get("review_result", {})
+    blocking_bugs = review.get("blocking_bugs", 0)
+    review_content = review.get("review_content_preview", "")
+    non_blocking_notes = review.get("non_blocking_notes", "")
+    tasks_path = review.get("tasks_path", f"phases/phase_{phase_num}/tasks.md")
+    workspace_path = review.get("workspace_path", str(project_dir / "workspace"))
+    review_path = review.get("review_path", f"phases/phase_{phase_num}/review.md")
+    title = state.get("title", slug)
+
+    # Check for emergency rework indicators
+    rework_indicators = sum(1 for word in ["fundamental", "architectural",
+                                            "completely wrong", "redesign",
+                                            "start over", "rewrite"]
+                            if word in review_content.lower())
+    is_emergency = rework_indicators >= 3 or blocking_bugs > 5
+
+    if is_emergency:
+        # EMERGENCY REWORK — re-plan the phase
+        review_full = str(project_dir / review_path) if review_path else ""
+        bus.send(Message.create(
+            from_agent="runner",
+            to_agent="phase_planner",
+            type="task",
+            payload={
+                "phase": phase_num,
+                "phase_spec": f"REWORK REQUIRED — see review at {review_full}",
+                "is_rework": True,
+                "idea_slug": slug,
+            },
+            priority=0,
+        ))
+        # Update status
+        _write_state(project_dir, state, f"phase_{phase_num}_planning")
+        print(f"  🚨 Emergency rework for '{title}' phase {phase_num}")
+        return True
+
+    elif blocking_bugs > 0:
+        # Increment retry counter
+        retries = _increment_retries(project_dir, phase_num)
+
+        if retries >= MAX_PHASE_RETRIES:
+            # Too many retries — force-advance
+            print(f"  ⚠️  Force-advancing '{title}' phase {phase_num} after {retries} retries ({blocking_bugs} bugs remain)")
+            _reset_retries(project_dir, phase_num)
+            advanced = _advance_phase(bus, project_dir, state, phase_num, slug)
+            if not advanced:
+                _mark_complete(project_dir, state, title)
+            return True
+        else:
+            # Send back to executor with fix instructions
+            review_full = str(project_dir / review_path) if review_path else ""
+            bus.send(Message.create(
+                from_agent="runner",
+                to_agent="executor",
+                type="task",
+                payload={
+                    "phase": phase_num,
+                    "tasks_path": tasks_path,
+                    "workspace_path": workspace_path,
+                    "fix_required": True,
+                    "review_path": review_path,
+                    "blocking_bugs": blocking_bugs,
+                    "fix_instructions": (
+                        f"Fix {blocking_bugs} blocking bugs from review (attempt {retries}/{MAX_PHASE_RETRIES}). "
+                        f"Read `{review_full}` for details."
+                    ),
+                    "idea_slug": slug,
+                },
+            ))
+            _write_state(project_dir, state, f"phase_{phase_num}_executing")
+            print(f"  🔧 '{title}' phase {phase_num}: {blocking_bugs} bugs → executor (retry {retries}/{MAX_PHASE_RETRIES})")
+            return True
+    else:
+        # Clean pass — save non-blocking notes, advance or complete
+        if non_blocking_notes:
+            _append_polish(project_dir, phase_num, non_blocking_notes)
+
+        _reset_retries(project_dir, phase_num)
+
+        advanced = _advance_phase(bus, project_dir, state, phase_num, slug)
+        if not advanced:
+            _mark_complete(project_dir, state, title)
+            print(f"  ✅ '{title}' completed all phases!")
+        else:
+            print(f"  ➡️  '{title}' phase {phase_num} passed → advancing to phase {phase_num + 1}")
+
+        return True
+
+
+def _advance_phase(
+    bus: MessageBus,
+    project_dir: pathlib.Path,
+    state: dict,
+    completed_phase: int,
+    slug: str,
+) -> bool:
+    """Advance to next phase if one exists. Returns True if advanced."""
+    master_plan_file = project_dir / "state" / "master_plan.md"
+    if not master_plan_file.exists():
+        return False
+
+    master_plan = master_plan_file.read_text(encoding="utf-8")
+    next_phase = completed_phase + 1
+
+    # Check if next phase exists in plan
+    pattern = rf"## Phase {next_phase}[:\s]"
+    if not re.search(pattern, master_plan, re.IGNORECASE):
+        return False  # No more phases
+
+    # Extract next phase spec (simple extraction)
+    phase_pattern = rf"(## Phase {next_phase}[^\n]*\n)(.*?)(?=## Phase \d|$)"
+    match = re.search(phase_pattern, master_plan, re.DOTALL | re.IGNORECASE)
+    phase_spec = match.group(0) if match else f"Phase {next_phase} of project {slug}"
+
+    # Update state
+    state["status"] = f"phase_{next_phase}_planning"
+    state["phase"] = next_phase
+    state.pop("review_result", None)  # Clear stale review data
+    _write_state_dict(project_dir, state)
+
+    # Send to phase planner
+    bus.send(Message.create(
+        from_agent="runner",
+        to_agent="phase_planner",
+        type="task",
+        payload={
+            "phase": next_phase,
+            "phase_spec": phase_spec[:3000],
+            "idea_slug": slug,
+        },
+    ))
+    return True
+
+
+def _mark_complete(project_dir: pathlib.Path, state: dict, title: str) -> None:
+    """Mark a project as complete in both state file and master_ideas.md."""
+    state["status"] = "complete"
+    state.pop("review_result", None)
+    _write_state_dict(project_dir, state)
+
+    # Mark in master_ideas.md
+    mi_path = PROJECT_ROOT / "master_ideas.md"
+    if mi_path.exists() and title:
+        content = mi_path.read_text(encoding="utf-8")
+        # Handle both [title] and title formats
+        clean_title = title.strip("[]")
+        updated = content.replace(f"- [ ] **{title}**", f"- [x] **{title}**")
+        if updated == content:
+            updated = content.replace(f"- [ ] **[{clean_title}]**", f"- [x] **[{clean_title}]**")
+        if updated != content:
+            mi_path.write_text(updated, encoding="utf-8")
+
+
+def _write_state(project_dir: pathlib.Path, state: dict, new_status: str) -> None:
+    """Update status in current_idea.json."""
+    state["status"] = new_status
+    state.pop("review_result", None)
+    _write_state_dict(project_dir, state)
+
+
+def _write_state_dict(project_dir: pathlib.Path, state: dict) -> None:
+    """Write state dict to disk."""
+    state_file = project_dir / "state" / "current_idea.json"
+    state_file.write_text(json.dumps(state, indent=2), encoding="utf-8")
+
+
+def _increment_retries(project_dir: pathlib.Path, phase_num: int) -> int:
+    """Increment and return the retry count for a phase."""
+    retries_file = project_dir / "state" / "phase_retries.json"
+    try:
+        data = json.loads(retries_file.read_text(encoding="utf-8"))
+    except Exception:
+        data = {}
+    key = f"phase_{phase_num}"
+    data[key] = data.get(key, 0) + 1
+    retries_file.write_text(json.dumps(data, indent=2), encoding="utf-8")
+    return data[key]
+
+
+def _reset_retries(project_dir: pathlib.Path, phase_num: int) -> None:
+    """Reset retry counter for a phase."""
+    retries_file = project_dir / "state" / "phase_retries.json"
+    try:
+        data = json.loads(retries_file.read_text(encoding="utf-8"))
+        data.pop(f"phase_{phase_num}", None)
+        retries_file.write_text(json.dumps(data, indent=2), encoding="utf-8")
+    except Exception:
+        pass
+
+
+def _append_polish(project_dir: pathlib.Path, phase_num: int, notes: str) -> None:
+    """Save non-blocking review notes as deferred polish tasks."""
+    path = project_dir.parent.parent / ".pipeline" / "state" / "plan_amendments.md"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    bullets = re.findall(r'^[-*]\s+(.+)$', notes, re.MULTILINE)
+    if not bullets:
+        return
+    with open(path, "a", encoding="utf-8") as f:
+        f.write(f"\n### Phase {phase_num} Polish Items\n")
+        for b in bullets:
+            f.write(f"- [ ] (polish) {b}\n")
 
 
 def run_pipeline(
