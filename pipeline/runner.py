@@ -150,9 +150,11 @@ def _check_ollama_model(model: str) -> None:
 
 
 def _check_ollama_heartbeat(model: str, _last_ok: list = [0.0]) -> str:
-    """Quick Ollama liveness check. Returns status string for display.
+    """Quick Ollama liveness check + keepalive ping. Returns status string.
 
     Only pings once every 5 minutes (tracked via _last_ok mutable default).
+    If the model is IDLE (evicted from VRAM), sends a keepalive request to
+    reload it so agents don't run on CPU.
     """
     now = time.time()
     if now - _last_ok[0] < 300:  # Only check every 5 min
@@ -172,7 +174,24 @@ def _check_ollama_heartbeat(model: str, _last_ok: list = [0.0]) -> str:
             vram = models[0].get("size_vram", 0) / 1e9
             return f"gpu={vram:.0f}GB"
         else:
-            return "gpu=IDLE"
+            # Model was evicted — send a keepalive ping to reload into VRAM
+            try:
+                import json as _json
+                payload = _json.dumps({
+                    "model": model,
+                    "prompt": "",
+                    "keep_alive": -1,   # never auto-evict
+                    "stream": False,
+                }).encode()
+                req = urllib.request.Request(
+                    f"{base_url}/api/generate",
+                    data=payload,
+                    headers={"Content-Type": "application/json"},
+                )
+                urllib.request.urlopen(req, timeout=30)
+                return "gpu=RELOADING"
+            except Exception:
+                return "gpu=IDLE"
     except Exception:
         return "gpu=ERR"
 
