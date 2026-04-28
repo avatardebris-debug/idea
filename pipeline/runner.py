@@ -533,6 +533,7 @@ def _rebuild_queues_from_state(bus: MessageBus) -> int:
             if tasks_file.exists():
                 try:
                     from pipeline.agent_process import AgentProcess
+                    AgentProcess.normalize_tasks_file(tasks_file)  # ## Task N: -> - [ ] Task N:
                     raw = tasks_file.read_text(encoding="utf-8")
                     scoped = AgentProcess._extract_phase_tasks(raw, phase_num)
                     lines = scoped.split("\n")
@@ -1051,9 +1052,9 @@ def run_pipeline(
                     if slug:
                         tasks_file = PIPELINE_DIR / "projects" / slug / f"phases/phase_{phase_num}/tasks.md"
                         if tasks_file.exists():
-                            raw = tasks_file.read_text(encoding="utf-8")
-                            # Scope to current phase only (some files have all phases)
                             from pipeline.agent_process import AgentProcess
+                            AgentProcess.normalize_tasks_file(tasks_file)  # fix heading format
+                            raw = tasks_file.read_text(encoding="utf-8")
                             scoped = AgentProcess._extract_phase_tasks(raw, phase_num)
                             tasks_total = len(re.findall(r'^\s*- \[[ xX]\]', scoped, re.MULTILINE))
                             tasks_done  = len(re.findall(r'^\s*- \[[xX]\]', scoped, re.MULTILINE))

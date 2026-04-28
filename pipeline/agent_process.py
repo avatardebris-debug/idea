@@ -299,6 +299,56 @@ class AgentProcess:
 
         return tasks_content[start:end]
 
+    @staticmethod
+    def _normalize_tasks_format(content: str) -> str:
+        """Normalize any LLM task format to canonical '- [ ] Task N: title'.
+
+        Handles these common LLM deviations:
+          ## Task 1: title       -> - [ ] Task 1: title
+          ### Task 1: title      -> - [ ] Task 1: title
+          **Task 1**: title      -> - [ ] Task 1: title
+          1. Task 1: title       -> - [ ] Task 1: title (numbered lists)
+          - [ x ] ...            -> - [x] ... (space inside brackets)
+        """
+        import re as _re
+        lines = content.splitlines()
+        out = []
+        for line in lines:
+            # ## Task N: or ### Task N: headings
+            m = _re.match(r'^#+\s+(Task\s+\d+[:.]\s*.+)', line, _re.IGNORECASE)
+            if m:
+                out.append(f"- [ ] {m.group(1)}")
+                continue
+            # **Task N**: title or **Task N: title**
+            m = _re.match(r'^\*\*(Task\s+\d+)[:\.]?\*\*[:\s]*(.*)', line, _re.IGNORECASE)
+            if m:
+                out.append(f"- [ ] {m.group(1)}: {m.group(2)}".rstrip(": "))
+                continue
+            # Numbered list: 1. Task N: ... or 1. title
+            m = _re.match(r'^\d+\.\s+(Task\s+\d+[:.].+)', line, _re.IGNORECASE)
+            if m:
+                out.append(f"- [ ] {m.group(1)}")
+                continue
+            # Fix space inside brackets: - [ x ] or - [X ]
+            line = _re.sub(r'^(\s*- \[)\s*([xX])\s*(\])', r'\1\2\3', line)
+            out.append(line)
+        return "\n".join(out)
+
+    @classmethod
+    def normalize_tasks_file(cls, tasks_path: "pathlib.Path") -> bool:
+        """Normalize a tasks.md file in-place. Returns True if changes were made."""
+        import pathlib
+        p = pathlib.Path(tasks_path)
+        if not p.exists():
+            return False
+        raw = p.read_text(encoding="utf-8")
+        normalized = cls._normalize_tasks_format(raw)
+        if normalized != raw:
+            p.write_text(normalized, encoding="utf-8")
+            return True
+        return False
+
+
     # --- Prompt construction ---
 
     def load_system_prompt(self) -> str:
