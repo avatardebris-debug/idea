@@ -809,6 +809,16 @@ def _advance_phase(
     state.pop("review_result", None)  # Clear stale review data
     _write_state_dict(project_dir, state)
 
+    # Write spec.md so the agent always has full context on disk
+    spec_dir = project_dir / f"phases/phase_{next_phase}"
+    spec_dir.mkdir(parents=True, exist_ok=True)
+    spec_file = spec_dir / "spec.md"
+    if phase_spec and not spec_file.exists():
+        try:
+            spec_file.write_text(phase_spec, encoding="utf-8")
+        except Exception:
+            pass
+
     # Send to phase planner
     bus.send(Message.create(
         from_agent="runner",
