@@ -627,9 +627,30 @@ def _rebuild_queues_from_state(bus: MessageBus) -> int:
             if recently_active:
                 print(f"  \u23f3 '{title}' executor active recently — skipping re-queue")
                 continue
-            agent   = "executor"
-            payload = {"phase": phase_num, "tasks_path": tasks_path,
-                       "workspace_path": workspace_path, "idea_slug": slug}
+            # Guard: if tasks.md is missing, re-route to phase_planner
+            tasks_file_path = project_dir / tasks_path
+            if not tasks_file_path.exists():
+                mp_file = project_dir / "state" / "master_plan.md"
+                ph_spec = f"Phase {phase_num} of project {slug}"
+                if mp_file.exists():
+                    try:
+                        mp_txt = mp_file.read_text(encoding="utf-8")
+                        pm = re.search(
+                            rf"## Phase {phase_num}[:\s].*?(?=## Phase \d|$)",
+                            mp_txt, re.DOTALL | re.IGNORECASE)
+                        if pm:
+                            ph_spec = pm.group(0)
+                    except Exception:
+                        pass
+                _write_state(project_dir, state, f"phase_{phase_num}_planning")
+                print(f"  \U0001f4cb '{title}' missing tasks.md \u2192 re-routing to phase_planner")
+                agent   = "phase_planner"
+                payload = {"phase": phase_num, "phase_spec": ph_spec[:3000], "idea_slug": slug}
+            else:
+                agent   = "executor"
+                payload = {"phase": phase_num, "tasks_path": tasks_path,
+                           "workspace_path": workspace_path, "idea_slug": slug}
+
 
         elif phase_step == "validating":
             agent   = "validator"
