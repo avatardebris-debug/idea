@@ -545,7 +545,15 @@ def _rebuild_queues_from_state(bus: MessageBus) -> int:
                         print(f"  ✂️  Trimmed '{title}' phase {phase_num}: {len(task_indices)} → {MAX_TASKS} tasks")
                 except Exception:
                     pass
-        elif status == "planning":
+
+        # Always refresh started_at when re-queuing — budget is per-session,
+        # not total project lifetime. Without this, a manually-reset project
+        # or one from a previous session fires budget_exceeded immediately.
+        state["started_at"] = datetime.now(timezone.utc).isoformat()
+        state.pop("budget_note", None)
+        state_file.write_text(json.dumps(state, indent=2), encoding="utf-8")
+
+        if status == "planning":
             # Was in initial idea planning — restart from idea_planner
             msg = Message.create(
                 from_agent="runner",
@@ -561,8 +569,9 @@ def _rebuild_queues_from_state(bus: MessageBus) -> int:
             injected += 1
             print(f"  🔁 Re-queued '{title}' → idea_planner (was: planning)")
             continue
-        else:
+        elif not status.startswith("phase_"):
             continue  # Unknown status — skip
+
 
         tasks_path     = f"phases/phase_{phase_num}/tasks.md"
         workspace_path = str(project_dir / "workspace")
