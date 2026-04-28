@@ -607,9 +607,30 @@ def _rebuild_queues_from_state(bus: MessageBus) -> int:
             agent    = "phase_planner"
             payload  = {"phase": phase_num, "phase_spec": phase_spec, "idea_slug": slug}
         elif phase_step == "executing":
+            # Don't re-queue if workspace files were written in last 10 min —
+            # the executor may still be mid-run (acked msg but writing files).
+            workspace_dir = project_dir / "workspace"
+            recently_active = False
+            if workspace_dir.exists():
+                cutoff = time.time() - 600  # 10 minutes
+                for _root, _, _files in os.walk(str(workspace_dir)):
+                    if recently_active:
+                        break
+                    for _fn in _files:
+                        if _fn.endswith((".py", ".md", ".json", ".yaml")):
+                            try:
+                                if os.path.getmtime(os.path.join(_root, _fn)) > cutoff:
+                                    recently_active = True
+                                    break
+                            except OSError:
+                                pass
+            if recently_active:
+                print(f"  \u23f3 '{title}' executor active recently — skipping re-queue")
+                continue
             agent   = "executor"
             payload = {"phase": phase_num, "tasks_path": tasks_path,
                        "workspace_path": workspace_path, "idea_slug": slug}
+
         elif phase_step == "validating":
             agent   = "validator"
             payload = {"phase": phase_num, "tasks_path": tasks_path,
