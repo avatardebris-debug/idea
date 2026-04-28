@@ -7,9 +7,12 @@ import sys
 from pathlib import Path
 from typing import Any
 
+import json
+import yaml
+
 from dropship_seo import __version__
 from dropship_seo.models import Product
-from dropship_seo.seo_analyzer import SEOAnalyzer
+from dropship_seo.analyzer import SEOAnalyzer
 from dropship_seo.batch_processor import BatchProcessor
 from dropship_seo.exporters import Exporter
 from dropship_seo.config import get_config, reload_config

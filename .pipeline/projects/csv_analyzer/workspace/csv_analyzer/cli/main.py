@@ -10,9 +10,10 @@ from csv_analyzer.core.analyzer import AnalysisEngine
 from csv_analyzer.io.csv_reader import CsvReader
 
 
-@click.group()
+@click.group(invoke_without_command=True)
 @click.version_option(version="0.1.0", prog_name="csv-analyzer")
-def cli() -> None:
+@click.pass_context
+def cli(ctx: click.Context) -> None:
     """csv-analyzer — A CSV analysis tool.
 
     This tool provides commands for analyzing CSV files, including:
@@ -20,11 +21,13 @@ def cli() -> None:
     - stats: Show summary statistics for numeric columns
     - head: Display the first few rows of a CSV file
     """
-    pass
+    # If no subcommand was provided, show help
+    if ctx.invoked_subcommand is None:
+        click.echo(cli.get_help(ctx))
 
 
 @cli.command()
-@click.argument("filepath", type=click.Path(exists=True))
+@click.argument("filepath", type=click.Path())
 @click.option("--n", default=5, help="Number of rows to display (default: 5)")
 def head(filepath: str, n: int) -> None:
     """Display the first n rows of a CSV file.
@@ -137,4 +140,9 @@ def stats(filepath: str) -> None:
 
 
 if __name__ == "__main__":
-    cli()
+    try:
+        cli()
+    except SystemExit:
+        # Click raises SystemExit when no command is provided or on error
+        # This is expected behavior, so we handle it gracefully
+        pass

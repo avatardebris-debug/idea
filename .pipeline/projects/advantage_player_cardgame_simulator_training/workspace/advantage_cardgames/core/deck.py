@@ -61,6 +61,16 @@ class Rank(Enum):
             return 11
         return self.value
 
+    @property
+    def is_ace(self) -> bool:
+        """Check if this rank is an Ace."""
+        return self == Rank.ACE
+
+    @property
+    def is_face(self) -> bool:
+        """Check if this rank is a face card (Jack, Queen, King)."""
+        return self in (Rank.JACK, Rank.QUEEN, Rank.KING)
+
 
 @dataclass(frozen=True)
 class Card:
@@ -182,6 +192,10 @@ class Shoe:
         if seed is not None:
             self._rng = random.Random(seed)
         self._build_shoe()
+
+    def shuffle(self) -> None:
+        """Shuffle the shoe in place."""
+        self._rng.shuffle(self._cards)
 
     @property
     def num_decks(self) -> int:

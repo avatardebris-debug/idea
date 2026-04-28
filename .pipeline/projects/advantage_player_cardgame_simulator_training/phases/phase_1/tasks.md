@@ -1,32 +1,32 @@
 # Advantage Player Card Game Simulator Training
 
 ## Phase 1: Core Engine + Blackjack Simulator
-- [ ] Task 1: Project scaffolding
+- [x] Task 1: Project scaffolding
   - What: Create the package directory structure, pyproject.toml, requirements.txt, and __init__.py files. Set up the top-level package `advantage_cardgames` with subpackages `core`, `simulators`, `simulators.poker`, `monte_carlo`, `analysis`, `strategy`, `cli`, `tests`, and `benchmarks`.
   - Files: pyproject.toml, requirements.txt, advantage_cardgames/__init__.py, advantage_cardgames/core/__init__.py, advantage_cardgames/simulators/__init__.py, advantage_cardgames/simulators/poker/__init__.py, advantage_cardgames/monte_carlo/__init__.py, advantage_cardgames/analysis/__init__.py, advantage_cardgames/strategy/__init__.py, advantage_cardgames/cli/__init__.py, advantage_cardgames/tests/__init__.py, advantage_cardgames/benchmarks/__init__.py
   - Done when: `pip install -e .` succeeds from the project root, and `import advantage_cardgames` works with all subpackages importable.
 
-- [ ] Task 2: Core game engine — deck, hand, and game base class
+- [x] Task 2: Core game engine — deck, hand, and game base class
   - What: Implement `core/deck.py` (Card, Deck, Shoe classes with shuffle, deal, cut-card shuffle), `core/hand.py` (Hand class with card management, hand evaluation for blackjack — bust, blackjack, soft/hard totals, push, win, loss), and `core/game.py` (abstract Game base class with start_round, get_legal_actions, apply_action, get_outcome, state serialization).
   - Files: advantage_cardgames/core/deck.py, advantage_cardgames/core/hand.py, advantage_cardgames/core/game.py
   - Done when: Deck creates 52 cards, shuffles deterministically with a seed, deals correctly. Hand evaluates blackjack hands correctly (blackjack, bust, push, win, loss). Game base class is abstract with clear interfaces. Unit tests pass for all three modules.
 
-- [ ] Task 3: Blackjack basic strategy table
+- [x] Task 3: Blackjack basic strategy table
   - What: Implement `strategy/basic_strategy.py` with a precomputed basic strategy table for standard blackjack rules (dealer stands on 17, double after split allowed, surrender allowed, 6 decks). Strategy maps (player_hand, dealer_upcard) → action (hit, stand, double, split, surrender). Load strategy from embedded JSON dict.
   - Files: advantage_cardgames/strategy/basic_strategy.py
   - Done when: Strategy returns correct actions for all standard player-dealer combinations. Actions match known reference tables (e.g., player 16 vs dealer 10 → surrender/hit, player 12 vs dealer 2-3 → hit, player 11 vs dealer 2-10 → double). Strategy can be serialized to and loaded from JSON.
 
-- [ ] Task 4: Blackjack simulator
+- [x] Task 4: Blackjack simulator
   - What: Implement `simulators/blackjack.py` with configurable rules (number of decks, dealer stands/hits on 17, surrender allowed, double after split, insurance). Simulator runs N hands, applies a strategy (basic or player-determined), tracks outcomes, and computes EV, win/loss/push rates, and standard deviation. Supports both single-hand and multi-hand simulation.
   - Files: advantage_cardgames/simulators/blackjack.py
   - Done when: Simulator runs 100,000 hands in under 30 seconds. EV is within 0.1% of published basic strategy EV (-0.5% for standard rules). All rule variants work correctly. Unit tests cover hand dealing, outcome determination, strategy application, and EV computation.
 
-- [ ] Task 5: CLI entry point
+- [x] Task 5: CLI entry point
   - What: Implement `cli/main.py` with argparse-based CLI. Subcommands: `blackjack` (run simulation with --hands, --strategy, --decks, --dealer-rule options), `ev` (compute EV for a given strategy), `compare` (compare two strategies). Entry via `python -m advantage_cardgames blackjack --hands 100000 --strategy basic`.
   - Files: advantage_cardgames/cli/main.py, advantage_cardgames/__main__.py
   - Done when: `python -m advantage_cardgames blackjack --hands 100000 --strategy basic` runs and prints simulation results (EV, win rate, loss rate, push rate, standard deviation). All CLI options work correctly. Help text is informative.
 
-- [ ] Task 6: Phase 1 test suite
+- [x] Task 6: Phase 1 test suite
   - What: Write comprehensive tests in `tests/test_deck.py`, `tests/test_hand.py`, `tests/test_game.py`, `tests/test_basic_strategy.py`, `tests/test_blackjack.py`, and `tests/test_integration.py`. Test deck creation/shuffling, hand evaluation edge cases, strategy correctness, simulator EV accuracy, and end-to-end CLI invocation.
   - Files: advantage_cardgames/tests/test_deck.py, advantage_cardgames/tests/test_hand.py, advantage_cardgames/tests/test_game.py, advantage_cardgames/tests/test_basic_strategy.py, advantage_cardgames/tests/test_blackjack.py, advantage_cardgames/tests/test_integration.py
   - Done when: All tests pass with `pytest`. Test coverage is comprehensive (deck, hand, strategy, simulator, CLI). Integration test verifies full pipeline: create game → deal → apply strategy → compute EV → CLI invocation.

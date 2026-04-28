@@ -715,7 +715,7 @@ class TestIntegration(unittest.TestCase):
         self.niche_analyzer = NicheAnalyzer()
         self.keyword_researcher = KeywordResearcher()
         self.market_analyzer = MarketAnalyzer()
-        self.report_generator = ResearchReport(format="markdown")
+        self.report_generator = ResearchReport(title="Test Research Report", format="markdown")
     
     def test_complete_research_workflow(self):
         """Test complete research workflow from analysis to report."""

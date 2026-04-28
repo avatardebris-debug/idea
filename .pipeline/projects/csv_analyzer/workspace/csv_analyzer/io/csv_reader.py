@@ -109,8 +109,8 @@ class CsvReader:
             )
             return df
         except pd.errors.EmptyDataError:
-            # Handle empty files
-            return pd.DataFrame()
+            # Re-raise EmptyDataError for empty files
+            raise
         except pd.errors.ParserError as e:
             raise ValueError(f"Failed to parse CSV file: {e}")
 
@@ -128,6 +128,23 @@ class CsvReader:
             List of parsed DataFrames.
         """
         return [self.read(fp) for fp in filepaths]
+
+    @classmethod
+    def read_with_type_inference(cls, filepath: str | Path) -> pd.DataFrame:
+        """Read a CSV file with automatic type inference.
+
+        Parameters
+        ----------
+        filepath : str | Path
+            Path to the CSV file.
+
+        Returns
+        -------
+        pd.DataFrame
+            The parsed DataFrame with inferred types.
+        """
+        reader = cls()
+        return reader.read(filepath)
 
     def read_chunked(
         self,

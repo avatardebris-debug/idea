@@ -1,132 +1,119 @@
-"""Comprehensive tests for agent router."""
-
-from __future__ import annotations
+"""Tests for Agent Router and Cost Tracking."""
 
 import pytest
-
 from drop_servicing_tool.agent_router import (
     AgentRouter,
-    StepCost,
-    ExecutionCost,
     LLMClientRouter,
-)
-from drop_servicing_tool.agent_config import (
-    ProviderType,
-    AgentConfig,
-    AgentConfigList,
-    AgentMode,
+    ExecutionCost,
+    StepCost,
 )
 
 
 class TestStepCost:
-    """Tests for StepCost dataclass."""
+    """Tests for StepCost model."""
 
     def test_step_cost_creation(self):
         """Test creating a StepCost."""
         cost = StepCost(
-            step_name="analyze",
-            provider="openai",
-            model="gpt-4o-mini",
+            step_name="test_step",
             input_tokens=100,
-            output_tokens=200,
-            cost_usd=0.001,
+            output_tokens=50,
+            total_tokens=150,
+            cost_usd=0.001
         )
-        assert cost.step_name == "analyze"
-        assert cost.provider == "openai"
+        assert cost.step_name == "test_step"
         assert cost.input_tokens == 100
-        assert cost.output_tokens == 200
+        assert cost.output_tokens == 50
+        assert cost.total_tokens == 150
         assert cost.cost_usd == 0.001
+
+    def test_step_cost_defaults(self):
+        """Test StepCost default values."""
+        cost = StepCost(step_name="test_step")
+        assert cost.input_tokens == 0
+        assert cost.output_tokens == 0
+        assert cost.total_tokens == 0
+        assert cost.cost_usd == 0.0
+
+    def test_step_cost_total_calculation(self):
+        """Test that total_tokens is calculated correctly."""
+        cost = StepCost(
+            step_name="test_step",
+            input_tokens=100,
+            output_tokens=50
+        )
+        assert cost.total_tokens == 150
 
 
 class TestExecutionCost:
-    """Tests for ExecutionCost dataclass."""
+    """Tests for ExecutionCost model."""
 
     def test_execution_cost_creation(self):
         """Test creating an ExecutionCost."""
         cost = ExecutionCost(
-            total_cost_usd=0.005,
-            total_input_tokens=500,
-            total_output_tokens=1000,
-            step_costs=[
-                StepCost(
-                    step_name="analyze",
-                    provider="openai",
-                    model="gpt-4o-mini",
-                    input_tokens=200,
-                    output_tokens=300,
-                    cost_usd=0.002,
-                ),
-                StepCost(
-                    step_name="format",
-                    provider="anthropic",
-                    model="claude-3-5-sonnet",
-                    input_tokens=300,
-                    output_tokens=700,
-                    cost_usd=0.003,
-                ),
-            ],
+            total_input_tokens=1000,
+            total_output_tokens=500,
+            total_tokens=1500,
+            total_cost_usd=0.015
         )
-        assert cost.total_cost_usd == 0.005
-        assert cost.total_input_tokens == 500
-        assert cost.total_output_tokens == 1000
+        assert cost.total_input_tokens == 1000
+        assert cost.total_output_tokens == 500
+        assert cost.total_tokens == 1500
+        assert cost.total_cost_usd == 0.015
+
+    def test_execution_cost_with_steps(self):
+        """Test ExecutionCost with step costs."""
+        step_costs = [
+            StepCost(step_name="step1", input_tokens=100, output_tokens=50, cost_usd=0.001),
+            StepCost(step_name="step2", input_tokens=200, output_tokens=100, cost_usd=0.002)
+        ]
+        cost = ExecutionCost(
+            total_input_tokens=300,
+            total_output_tokens=150,
+            total_tokens=450,
+            total_cost_usd=0.003,
+            step_costs=step_costs
+        )
         assert len(cost.step_costs) == 2
+        assert cost.step_costs[0].step_name == "step1"
+
+    def test_execution_cost_defaults(self):
+        """Test ExecutionCost default values."""
+        cost = ExecutionCost()
+        assert cost.total_input_tokens == 0
+        assert cost.total_output_tokens == 0
+        assert cost.total_tokens == 0
+        assert cost.total_cost_usd == 0.0
+        assert cost.step_costs == []
 
 
 class TestAgentRouter:
     """Tests for AgentRouter class."""
 
     def test_router_initialization(self):
-        """Test router initialization with configs."""
-        configs = AgentConfigList(
-            fast=AgentConfig(provider=ProviderType.OPENAI, model="gpt-4o-mini"),
-            balanced=AgentConfig(provider=ProviderType.OPENAI, model="gpt-4o"),
-            quality=AgentConfig(provider=ProviderType.ANTHROPIC, model="claude-3-5-sonnet"),
-        )
-        router = AgentRouter(configs)
-        assert router.configs == configs
+        """Test router initialization."""
+        router = AgentRouter()
+        assert router is not None
 
-    def test_router_get_config_fast(self):
-        """Test getting fast mode config."""
-        configs = AgentConfigList(
-            fast=AgentConfig(provider=ProviderType.OPENAI, model="gpt-4o-mini"),
-            balanced=AgentConfig(provider=ProviderType.OPENAI, model="gpt-4o"),
-            quality=AgentConfig(provider=ProviderType.ANTHROPIC, model="claude-3-5-sonnet"),
-        )
-        router = AgentRouter(configs)
-        config = router.get_config(AgentMode.FAST)
-        assert config.provider == ProviderType.OPENAI
-        assert config.model == "gpt-4o-mini"
+    def test_router_default_mode(self):
+        """Test router default mode."""
+        router = AgentRouter()
+        assert router.mode == "auto"
 
-    def test_router_get_config_balanced(self):
-        """Test getting balanced mode config."""
-        configs = AgentConfigList(
-            fast=AgentConfig(provider=ProviderType.OPENAI, model="gpt-4o-mini"),
-            balanced=AgentConfig(provider=ProviderType.OPENAI, model="gpt-4o"),
-            quality=AgentConfig(provider=ProviderType.ANTHROPIC, model="claude-3-5-sonnet"),
-        )
-        router = AgentRouter(configs)
-        config = router.get_config(AgentMode.BALANCED)
-        assert config.provider == ProviderType.OPENAI
-        assert config.model == "gpt-4o"
+    def test_router_set_mode(self):
+        """Test setting router mode."""
+        router = AgentRouter()
+        router.set_mode("step")
+        assert router.mode == "step"
 
-    def test_router_get_config_quality(self):
-        """Test getting quality mode config."""
-        configs = AgentConfigList(
-            fast=AgentConfig(provider=ProviderType.OPENAI, model="gpt-4o-mini"),
-            balanced=AgentConfig(provider=ProviderType.OPENAI, model="gpt-4o"),
-            quality=AgentConfig(provider=ProviderType.ANTHROPIC, model="claude-3-5-sonnet"),
-        )
-        router = AgentRouter(configs)
-        config = router.get_config(AgentMode.QUALITY)
-        assert config.provider == ProviderType.ANTHROPIC
-        assert config.model == "claude-3-5-sonnet"
+        router.set_mode("freeform")
+        assert router.mode == "freeform"
 
-    def test_router_get_config_invalid_mode(self):
-        """Test getting config for invalid mode."""
-        configs = AgentConfigList()
-        router = AgentRouter(configs)
+    def test_router_invalid_mode(self):
+        """Test setting invalid mode."""
+        router = AgentRouter()
         with pytest.raises(ValueError, match="Invalid mode"):
-            router.get_config("invalid_mode")
+            router.set_mode("invalid_mode")
 
 
 class TestLLMClientRouter:
@@ -134,95 +121,101 @@ class TestLLMClientRouter:
 
     def test_router_initialization(self):
         """Test LLMClientRouter initialization."""
-        configs = AgentConfigList(
-            fast=AgentConfig(provider=ProviderType.OPENAI, model="gpt-4o-mini"),
-            balanced=AgentConfig(provider=ProviderType.OPENAI, model="gpt-4o"),
-            quality=AgentConfig(provider=ProviderType.ANTHROPIC, model="claude-3-5-sonnet"),
-        )
-        router = LLMClientRouter(configs)
-        assert router.configs == configs
+        router = LLMClientRouter()
+        assert router is not None
 
-    def test_router_get_client_fast(self):
-        """Test getting client for fast mode."""
-        configs = AgentConfigList(
-            fast=AgentConfig(provider=ProviderType.OPENAI, model="gpt-4o-mini"),
-            balanced=AgentConfig(provider=ProviderType.OPENAI, model="gpt-4o"),
-            quality=AgentConfig(provider=ProviderType.ANTHROPIC, model="claude-3-5-sonnet"),
-        )
-        router = LLMClientRouter(configs)
-        client = router.get_client(AgentMode.FAST)
-        assert client is not None
+    def test_router_default_mode(self):
+        """Test LLMClientRouter default mode."""
+        router = LLMClientRouter()
+        assert router.mode == "auto"
 
-    def test_router_get_client_quality(self):
-        """Test getting client for quality mode."""
-        configs = AgentConfigList(
-            fast=AgentConfig(provider=ProviderType.OPENAI, model="gpt-4o-mini"),
-            balanced=AgentConfig(provider=ProviderType.OPENAI, model="gpt-4o"),
-            quality=AgentConfig(provider=ProviderType.ANTHROPIC, model="claude-3-5-sonnet"),
-        )
-        router = LLMClientRouter(configs)
-        client = router.get_client(AgentMode.QUALITY)
-        assert client is not None
+    def test_router_set_mode(self):
+        """Test setting LLMClientRouter mode."""
+        router = LLMClientRouter()
+        router.set_mode("step")
+        assert router.mode == "step"
 
-    def test_router_get_client_invalid_mode(self):
-        """Test getting client for invalid mode."""
-        configs = AgentConfigList()
-        router = LLMClientRouter(configs)
+    def test_router_mode_validation(self):
+        """Test LLMClientRouter mode validation."""
+        router = LLMClientRouter()
         with pytest.raises(ValueError, match="Invalid mode"):
-            router.get_client("invalid_mode")
+            router.set_mode("invalid_mode")
 
 
-class TestCostCalculation:
-    """Tests for cost calculation logic."""
+class TestCostTracking:
+    """Tests for cost tracking functionality."""
 
-    def test_step_cost_calculation(self):
-        """Test StepCost calculation."""
-        cost = StepCost(
-            step_name="test",
-            provider="openai",
-            model="gpt-4o-mini",
-            input_tokens=100,
-            output_tokens=200,
-            cost_usd=0.001,
-        )
-        assert cost.input_tokens == 100
-        assert cost.output_tokens == 200
-        assert cost.cost_usd == 0.001
-
-    def test_execution_cost_calculation(self):
-        """Test ExecutionCost calculation."""
+    def test_cost_accumulation(self):
+        """Test accumulating costs across steps."""
         step_costs = [
-            StepCost(
-                step_name="step1",
-                provider="openai",
-                model="gpt-4o-mini",
-                input_tokens=100,
-                output_tokens=200,
-                cost_usd=0.001,
-            ),
-            StepCost(
-                step_name="step2",
-                provider="anthropic",
-                model="claude-3-5-sonnet",
-                input_tokens=300,
-                output_tokens=400,
-                cost_usd=0.002,
-            ),
+            StepCost(step_name="step1", input_tokens=100, output_tokens=50, cost_usd=0.001),
+            StepCost(step_name="step2", input_tokens=200, output_tokens=100, cost_usd=0.002),
+            StepCost(step_name="step3", input_tokens=300, output_tokens=150, cost_usd=0.003)
         ]
-        total_input = sum(s.input_tokens for s in step_costs)
-        total_output = sum(s.output_tokens for s in step_costs)
-        total_cost = sum(s.cost_usd for s in step_costs)
 
-        assert total_input == 400
-        assert total_output == 600
-        assert total_cost == 0.003
+        total_input = sum(c.input_tokens for c in step_costs)
+        total_output = sum(c.output_tokens for c in step_costs)
+        total_cost = sum(c.cost_usd for c in step_costs)
+
+        assert total_input == 600
+        assert total_output == 300
+        assert total_cost == 0.006
+
+    def test_cost_calculation(self):
+        """Test cost calculation from tokens."""
+        # Assuming $0.00001 per token for testing
+        input_tokens = 1000
+        output_tokens = 500
+        cost_per_token = 0.00001
+
+        expected_cost = (input_tokens + output_tokens) * cost_per_token
+
+        cost = ExecutionCost(
+            total_input_tokens=input_tokens,
+            total_output_tokens=output_tokens,
+            total_tokens=input_tokens + output_tokens,
+            total_cost_usd=expected_cost
+        )
+
+        assert cost.total_cost_usd == expected_cost
+
+
+class TestRouterIntegration:
+    """Integration tests for router functionality."""
+
+    def test_router_with_cost_tracking(self):
+        """Test router with cost tracking."""
+        router = AgentRouter()
+        router.set_mode("step")
+
+        # Simulate step costs
+        step_costs = [
+            StepCost(step_name="step1", input_tokens=100, output_tokens=50, cost_usd=0.001),
+            StepCost(step_name="step2", input_tokens=200, output_tokens=100, cost_usd=0.002)
+        ]
+
+        total_input = sum(c.input_tokens for c in step_costs)
+        total_output = sum(c.output_tokens for c in step_costs)
+        total_cost = sum(c.cost_usd for c in step_costs)
 
         execution_cost = ExecutionCost(
-            total_cost_usd=total_cost,
             total_input_tokens=total_input,
             total_output_tokens=total_output,
-            step_costs=step_costs,
+            total_tokens=total_input + total_output,
+            total_cost_usd=total_cost,
+            step_costs=step_costs
         )
+
         assert execution_cost.total_cost_usd == 0.003
-        assert execution_cost.total_input_tokens == 400
-        assert execution_cost.total_output_tokens == 600
+        assert len(execution_cost.step_costs) == 2
+
+    def test_router_mode_persistence(self):
+        """Test that router mode persists."""
+        router = AgentRouter()
+        router.set_mode("step")
+
+        # Mode should persist
+        assert router.mode == "step"
+
+        router.set_mode("freeform")
+        assert router.mode == "freeform"

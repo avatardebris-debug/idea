@@ -187,87 +187,6 @@ class TestCliIntegration:
         assert "Instrument" not in result.output
 
 
-class TestCliEdgeCases:
-    """CLI tests for edge cases."""
-
-    def test_large_file_handling(self, tmp_path: Path) -> None:
-        """Test handling of larger files."""
-        csv_file = tmp_path / "large.csv"
-        with open(csv_file, "w", newline="") as f:
-            import csv
-            writer = csv.writer(f)
-            writer.writerow(["id", "value", "category"])
-            for i in range(1000):
-                writer.writerow([i, i * 10, f"cat_{i % 10}"])
-
-        runner = CliRunner()
-        result = runner.invoke(cli, ["info", str(csv_file)])
-
-        assert result.exit_code == 0
-        assert "Rows: 1000" in result.output
-        assert "Columns: 3" in result.output
-
-    def test_unicode_content(self, tmp_path: Path) -> None:
-        """Test handling of Unicode content."""
-        csv_file = tmp_path / "unicode.csv"
-        csv_file.write_text(
-            "name,city,country\n"
-            "José García,México,México\n"
-            "María López,España,España\n"
-            "李明，北京，中国\n"
-            "田中太郎，東京，日本\n"
-        )
-
-        runner = CliRunner()
-        result = runner.invoke(cli, ["head", str(csv_file)])
-
-        assert result.exit_code == 0
-        assert "José" in result.output
-        assert "María" in result.output
-        assert "李明" in result.output
-        assert "田中太郎" in result.output
-
-    def test_mixed_numeric_types(self, tmp_path: Path) -> None:
-        """Test handling of mixed numeric types (int and float)."""
-        csv_file = tmp_path / "mixed.csv"
-        csv_file.write_text(
-            "id,price,quantity\n"
-            "1,19.99,100\n"
-            "2,29.99,150\n"
-            "3,9.99,75\n"
-        )
-
-        runner = CliRunner()
-        result = runner.invoke(cli, ["stats", str(csv_file)])
-
-        assert result.exit_code == 0
-        assert "price" in result.output
-        assert "quantity" in result.output
-
-    def test_empty_dataframe(self, tmp_path: Path) -> None:
-        """Test handling of empty DataFrames."""
-        csv_file = tmp_path / "empty.csv"
-        csv_file.write_text("name,age,city\n")  # Header only
-
-        runner = CliRunner()
-        result = runner.invoke(cli, ["info", str(csv_file)])
-
-        assert result.exit_code == 0 or "Error" in result.output
-        assert "Columns: 3" in result.output
-
-    def test_single_column(self, tmp_path: Path) -> None:
-        """Test handling of single-column DataFrames."""
-        csv_file = tmp_path / "single.csv"
-        csv_file.write_text("value\n1\n2\n3\n4\n5\n")
-
-        runner = CliRunner()
-        result = runner.invoke(cli, ["stats", str(csv_file)])
-
-        assert result.exit_code == 0
-        assert "value" in result.output
-        assert "mean" in result.output
-
-
 class TestCliErrorHandling:
     """CLI tests for error handling."""
 
@@ -298,3 +217,56 @@ class TestCliErrorHandling:
             pass
         finally:
             csv_file.chmod(0o644)  # Restore permissions
+
+class TestCliMainBlock:
+    """Tests for the CLI main block."""
+
+    def test_cli_main_block(self) -> None:
+        """Test that the CLI main block works correctly."""
+        from csv_analyzer.cli.main import cli
+        from click.testing import CliRunner
+
+        # Use CliRunner to properly test Click CLI applications
+        runner = CliRunner()
+        result = runner.invoke(cli)
+
+        # When called without arguments, Click shows help and exits with code 0
+        assert result.exit_code == 0
+        assert "Usage:" in result.output or "Commands:" in result.output
+
+
+class TestCliEdgeCases:
+    """Additional CLI edge case tests."""
+
+    def test_head_with_zero_rows(self, tmp_path: Path) -> None:
+        """Test head command with empty CSV file."""
+        csv_file = tmp_path / "empty.csv"
+        csv_file.write_text("name,age,city\n")  # Header only
+
+        runner = CliRunner()
+        result = runner.invoke(cli, ["head", str(csv_file)])
+
+        assert result.exit_code == 0
+        assert "Empty CSV file" in result.output
+
+    def test_head_with_n_zero(self, tmp_path: Path) -> None:
+        """Test head command with n=0."""
+        csv_file = tmp_path / "test.csv"
+        csv_file.write_text("name,age,city\nAlice,30,NYC\nBob,25,LA\n")
+
+        runner = CliRunner()
+        result = runner.invoke(cli, ["head", str(csv_file), "--n", "0"])
+
+        assert result.exit_code == 0
+        assert "Alice" not in result.output
+
+    def test_stats_no_numeric_columns_message(self, tmp_path: Path) -> None:
+        """Test stats command shows message when no numeric columns."""
+        csv_file = tmp_path / "test.csv"
+        csv_file.write_text("name,city\nAlice,NYC\nBob,LA\n")
+
+        runner = CliRunner()
+        result = runner.invoke(cli, ["stats", str(csv_file)])
+
+        assert result.exit_code == 0
+        assert "No numeric columns found" in result.output

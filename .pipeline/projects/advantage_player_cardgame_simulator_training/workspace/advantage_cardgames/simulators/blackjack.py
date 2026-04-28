@@ -1,534 +1,649 @@
-"""Blackjack simulator implementation.
+"""Blackjack simulator module.
 
 Provides:
-- BlackjackGame: concrete game engine for blackjack
-- BlackjackSimulator: simulator for running blackjack hands
-- Result aggregation and statistics
+- Card: Represents a playing card with rank and suit
+- Deck: Manages a deck of cards with shuffling and dealing
+- Hand: Represents a player's or dealer's hand of cards
+- GameStatus: Enum for game state
+- BlackjackResult: Enum for game outcomes
+- BlackjackResultData: Dataclass for result tracking
+- SimulatorStats: Statistics tracking for simulations
+- BlackjackGame: Main game class for playing blackjack
 """
 
 from __future__ import annotations
 
 import random
 from dataclasses import dataclass, field
-from typing import List, Optional, Tuple
-
-from ..core.game import GameState, RoundResult, Game
-from ..core.hand import Outcome
-from ..core.deck import Deck, Shoe, Card
-from ..core.hand import Hand, HandType
-from ..core.deck import Card, Rank
-from ..core.strategy import BasicStrategy, Action
+from enum import Enum
+from typing import Dict, List, Optional
 
 
-@dataclass
-class BlackjackResult(RoundResult):
-    """Result of a blackjack round."""
-    player_hand: Optional[Hand] = None
-    dealer_hand: Optional[Hand] = None
-    player_action: Optional[str] = None
-    dealer_busted: bool = False
-    player_busted: bool = False
-    is_blackjack: bool = False
-    payout_multiplier: float = 0.0
+class Card:
+    """Represents a playing card."""
 
+    SUITS = ["♥", "♦", "♣", "♠"]
+    RANKS = [2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14]  # 11=J, 12=Q, 13=K, 14=A
 
-class BlackjackGame(Game):
-    """Concrete game engine for blackjack."""
+    def __init__(self, rank: int, suit: str):
+        """Initialize a card.
+        
+        Args:
+            rank: Card rank (2-14, where 11=J, 12=Q, 13=K, 14=A)
+            suit: Card suit (♥, ♦, ♣, or ♠)
+        """
+        self.rank = rank
+        self.suit = suit
 
-    def __init__(
-        self,
-        num_decks: int = 6,
-        dealer_stands_on_17: bool = True,
-        double_after_split: bool = True,
-        surrender_allowed: bool = True,
-        blackjack_pays: float = 1.5,
-        seed: Optional[int] = None,
-    ) -> None:
-        super().__init__()
-        self.num_decks = num_decks
-        self.dealer_stands_on_17 = dealer_stands_on_17
-        self.double_after_split = double_after_split
-        self.surrender_allowed = surrender_allowed
-        self.blackjack_pays = blackjack_pays
-        self.seed = seed
-        self._shoe: Optional[Shoe] = None
-        self._strategy = BasicStrategy()
+    @property
+    def value(self) -> int:
+        """Get card value for hand calculation."""
+        if self.rank >= 11 and self.rank <= 13:
+            return 10
+        return self.rank
 
-    def _create_shoe(self) -> Shoe:
-        shoe = Shoe(num_decks=self.num_decks)
-        shoe.shuffle()
-        return shoe
+    @property
+    def is_ace(self) -> bool:
+        """Check if card is an ace."""
+        return self.rank == 14
 
-    def _deal_initial_cards(self) -> Tuple[Hand, Hand]:
-        """Deal initial cards to player and dealer."""
-        player_hand = Hand()
-        dealer_hand = Hand()
-
-        # Deal in alternating order: player, dealer, player, dealer
-        player_hand.add_card(self._shoe.deal_card())
-        dealer_hand.add_card(self._shoe.deal_card())
-        player_hand.add_card(self._shoe.deal_card())
-        dealer_hand.add_card(self._shoe.deal_card())
-
-        return player_hand, dealer_hand
-
-    def _check_blackjack(self, player_hand: Hand, dealer_hand: Hand) -> Optional[BlackjackResult]:
-        """Check for natural blackjack."""
-        player_total = player_hand.total
-        dealer_total = dealer_hand.total
-
-        player_bj = player_total == 21 and len(player_hand.cards) == 2
-        dealer_bj = dealer_total == 21 and len(dealer_hand.cards) == 2
-
-        if player_bj and dealer_bj:
-            return BlackjackResult(
-                outcome=Outcome.PUSH,
-                bet=1.0,
-                payout=1.0,
-                net_result=0.0,
-                player_hand=player_hand,
-                dealer_hand=dealer_hand,
-                is_blackjack=True,
-                payout_multiplier=1.0,
-            )
-        elif player_bj:
-            payout = 1.0 + (self.blackjack_pays * 1.0)  # 1:1 return + 3:2 payout
-            return BlackjackResult(
-                outcome=Outcome.WIN,
-                bet=1.0,
-                payout=payout,
-                net_result=self.blackjack_pays,
-                player_hand=player_hand,
-                dealer_hand=dealer_hand,
-                is_blackjack=True,
-                payout_multiplier=self.blackjack_pays,
-            )
-        elif dealer_bj:
-            return BlackjackResult(
-                outcome=Outcome.LOSS,
-                bet=1.0,
-                payout=0.0,
-                net_result=-1.0,
-                player_hand=player_hand,
-                dealer_hand=dealer_hand,
-                is_blackjack=True,
-                payout_multiplier=0.0,
-            )
-        return None
-
-    def _player_turn(self, player_hand: Hand, dealer_upcard: Card) -> Tuple[Hand, str]:
-        """Execute player turn using basic strategy."""
-        action_taken = "stand"
-        hand = player_hand
-
-        while True:
-            hand_type = hand.hand_type
-            total = hand.total
-            is_pair = hand.can_split and len(hand.cards) == 2
-
-            # Check for surrender
-            if self.surrender_allowed and len(hand.cards) == 2:
-                surrender_action = self._strategy.get_surrender_action(total, dealer_upcard.rank.value)
-                if surrender_action == Action.SURRENDER:
-                    return hand, "surrender"
-
-            # Get recommended action
-            if is_pair and self.double_after_split:
-                action = self._strategy.get_split_action(hand.cards[0].rank.value, dealer_upcard.rank.value)
-            else:
-                action = self._strategy.get_action(
-                    hand_type.value, total, dealer_upcard.rank.value, is_pair
-                )
-
-            if action == Action.HIT:
-                hand.add_card(self._shoe.deal_card())
-                action_taken = "hit"
-                if hand.is_busted:
-                    return hand, "bust"
-            elif action == Action.STAND:
-                return hand, "stand"
-            elif action == Action.DOUBLE:
-                if len(hand.cards) == 2:
-                    hand.add_card(self._shoe.deal_card())
-                    action_taken = "double"
-                    if hand.is_busted:
-                        return hand, "bust"
-                    return hand, "double"
-                else:
-                    # Can't double after hitting, just hit
-                    hand.add_card(self._shoe.deal_card())
-                    action_taken = "hit"
-                    if hand.is_busted:
-                        return hand, "bust"
-            elif action == Action.SPLIT:
-                if len(hand.cards) == 2 and hand.can_split:
-                    return hand, "split"
-                else:
-                    # Can't split, just hit
-                    hand.add_card(self._shoe.deal_card())
-                    action_taken = "hit"
-                    if hand.is_busted:
-                        return hand, "bust"
-            else:
-                return hand, "stand"
-
-    def _dealer_turn(self, dealer_hand: Hand) -> Tuple[Hand, bool]:
-        """Execute dealer turn."""
-        dealer_busted = False
-
-        while True:
-            total = dealer_hand.total
-            if self.dealer_stands_on_17 and total >= 17:
-                break
-            elif not self.dealer_stands_on_17 and total >= 17 and total < 21:
-                # Soft 17: hit
-                if dealer_hand.hand_type == HandType.SOFT:
-                    dealer_hand.add_card(self._shoe.deal_card())
-                    continue
-                break
-            elif total < 17:
-                dealer_hand.add_card(self._shoe.deal_card())
-            else:
-                break
-
-            if dealer_hand.is_busted:
-                dealer_busted = True
-                break
-
-        return dealer_hand, dealer_busted
-
-    def _resolve_outcome(
-        self,
-        player_hand: Hand,
-        dealer_hand: Hand,
-        player_action: str,
-        dealer_busted: bool,
-        bet: float = 1.0,
-    ) -> BlackjackResult:
-        """Resolve the outcome of the round."""
-        player_busted = player_hand.is_busted
-        player_total = player_hand.total
-        dealer_total = dealer_hand.total
-
-        if player_action == "surrender":
-            return BlackjackResult(
-                outcome=Outcome.LOSS,
-                bet=bet,
-                payout=bet * 0.5,
-                net_result=-bet * 0.5,
-                player_hand=player_hand,
-                dealer_hand=dealer_hand,
-                player_action="surrender",
-                player_busted=player_busted,
-                dealer_busted=dealer_busted,
-                payout_multiplier=0.5,
-            )
-
-        if player_busted:
-            return BlackjackResult(
-                outcome=Outcome.BUST,
-                bet=bet,
-                payout=0.0,
-                net_result=-bet,
-                player_hand=player_hand,
-                dealer_hand=dealer_hand,
-                player_action=player_action,
-                player_busted=True,
-                dealer_busted=dealer_busted,
-                payout_multiplier=0.0,
-            )
-
-        if dealer_busted:
-            return BlackjackResult(
-                outcome=Outcome.WIN,
-                bet=bet,
-                payout=bet * 2.0,
-                net_result=bet,
-                player_hand=player_hand,
-                dealer_hand=dealer_hand,
-                player_action=player_action,
-                player_busted=False,
-                dealer_busted=True,
-                payout_multiplier=2.0,
-            )
-
-        if player_total > dealer_total:
-            return BlackjackResult(
-                outcome=Outcome.WIN,
-                bet=bet,
-                payout=bet * 2.0,
-                net_result=bet,
-                player_hand=player_hand,
-                dealer_hand=dealer_hand,
-                player_action=player_action,
-                player_busted=False,
-                dealer_busted=False,
-                payout_multiplier=2.0,
-            )
-        elif player_total < dealer_total:
-            return BlackjackResult(
-                outcome=Outcome.LOSS,
-                bet=bet,
-                payout=0.0,
-                net_result=-bet,
-                player_hand=player_hand,
-                dealer_hand=dealer_hand,
-                player_action=player_action,
-                player_busted=False,
-                dealer_busted=False,
-                payout_multiplier=0.0,
-            )
-        else:
-            return BlackjackResult(
-                outcome=Outcome.PUSH,
-                bet=bet,
-                payout=bet,
-                net_result=0.0,
-                player_hand=player_hand,
-                dealer_hand=dealer_hand,
-                player_action=player_action,
-                player_busted=False,
-                dealer_busted=False,
-                payout_multiplier=1.0,
-            )
-
-    def play_round(self, bet: float = 1.0) -> BlackjackResult:
-        """Play a single round of blackjack."""
-        if self._state != GameState.IDLE:
-            raise RuntimeError("Game must be in IDLE state to start a new round")
-
-        self._state = GameState.PLAYING
-
-        # Check if shoe needs reshuffling
-        if self._shoe is None or self._shoe.cards_remaining < 20:
-            self._shoe = self._create_shoe()
-
-        # Deal initial cards
-        player_hand, dealer_hand = self._deal_initial_cards()
-
-        # Check for natural blackjack
-        bj_result = self._check_blackjack(player_hand, dealer_hand)
-        if bj_result:
-            bj_result.player_action = "blackjack"
-            self._state = GameState.FINISHED
-            return bj_result
-
-        # Get dealer's upcard
-        dealer_upcard = dealer_hand.cards[0]
-
-        # Player turn
-        player_hand, player_action = self._player_turn(player_hand, dealer_upcard)
-
-        if player_action in ["surrender", "bust"]:
-            result = self._resolve_outcome(
-                player_hand, dealer_hand, player_action, False, bet
-            )
-            self._state = GameState.FINISHED
-            return result
-
-        # Dealer turn
-        dealer_hand, dealer_busted = self._dealer_turn(dealer_hand)
-
-        # Resolve outcome
-        result = self._resolve_outcome(
-            player_hand, dealer_hand, player_action, dealer_busted, bet
-        )
-        self._state = GameState.FINISHED
-        return result
-
-    def reset(self) -> None:
-        """Reset the game state."""
-        self._state = GameState.IDLE
-        self._shoe = None
-
-    def __str__(self) -> str:
-        return f"BlackjackGame(state={self._state.value}, shoe={self._shoe.cards_remaining if self._shoe else 0} cards)"
-
-    def __repr__(self) -> str:
-        return self.__str__()
-
-
-@dataclass
-class SimulatorStats:
-    """Statistics from a simulation run."""
-    total_rounds: int = 0
-    total_bets: float = 0.0
-    total_payouts: float = 0.0
-    net_result: float = 0.0
-    wins: int = 0
-    losses: int = 0
-    pushes: int = 0
-    busts: int = 0
-    blackjacks: int = 0
-    avg_bet: float = 0.0
-    avg_payout: float = 0.0
-    avg_net: float = 0.0
-    roi: float = 0.0
-    win_rate: float = 0.0
-    max_winning_streak: int = 0
-    max_losing_streak: int = 0
-    current_streak: int = 0
-    streak_type: str = ""
-
-    def update(self, result: BlackjackResult) -> None:
-        """Update statistics with a new result."""
-        self.total_rounds += 1
-        self.total_bets += result.bet
-        self.total_payouts += result.payout
-        self.net_result += result.net_result
-
-        if result.outcome == Outcome.WIN:
-            self.wins += 1
-            self.current_streak += 1
-            self.streak_type = "win"
-        elif result.outcome == Outcome.LOSS:
-            self.losses += 1
-            self.current_streak -= 1
-            self.streak_type = "loss"
-        elif result.outcome == Outcome.PUSH:
-            self.pushes += 1
-            self.current_streak = 0
-            self.streak_type = ""
-        elif result.outcome == Outcome.BUST:
-            self.busts += 1
-            self.current_streak -= 1
-            self.streak_type = "loss"
-        elif result.outcome == Outcome.BLACKJACK:
-            self.blackjacks += 1
-            self.wins += 1
-            self.current_streak += 1
-            self.streak_type = "win"
-
-        if self.current_streak > self.max_winning_streak:
-            self.max_winning_streak = self.current_streak
-        if self.current_streak < -self.max_losing_streak:
-            self.max_losing_streak = -self.current_streak
-
-        # Update averages
-        if self.total_rounds > 0:
-            self.avg_bet = self.total_bets / self.total_rounds
-            self.avg_payout = self.total_payouts / self.total_rounds
-            self.avg_net = self.net_result / self.total_rounds
-            self.roi = (self.net_result / self.total_bets * 100) if self.total_bets > 0 else 0.0
-            self.win_rate = (self.wins / self.total_rounds * 100) if self.total_rounds > 0 else 0.0
+    @property
+    def is_face(self) -> bool:
+        """Check if card is a face card."""
+        return self.rank >= 11 and self.rank <= 13
 
     def to_dict(self) -> dict:
-        """Convert stats to dictionary."""
-        return {
-            "total_rounds": self.total_rounds,
-            "total_bets": self.total_bets,
-            "total_payouts": self.total_payouts,
-            "net_result": self.net_result,
-            "wins": self.wins,
-            "losses": self.losses,
-            "pushes": self.pushes,
-            "busts": self.busts,
-            "blackjacks": self.blackjacks,
-            "avg_bet": self.avg_bet,
-            "avg_payout": self.avg_payout,
-            "avg_net": self.avg_net,
-            "roi": self.roi,
-            "win_rate": self.win_rate,
-            "max_winning_streak": self.max_winning_streak,
-            "max_losing_streak": self.max_losing_streak,
-        }
+        """Convert card to dictionary."""
+        return {"rank": self.rank, "suit": self.suit}
 
-    def __str__(self) -> str:
-        return (
-            f"SimulatorStats(rounds={self.total_rounds}, net={self.net_result:.2f}, "
-            f"ROI={self.roi:.2f}%, wins={self.wins}, losses={self.losses}, "
-            f"pushes={self.pushes}, busts={self.busts}, BJ={self.blackjacks})"
-        )
+    @classmethod
+    def from_dict(cls, d: dict) -> "Card":
+        """Create card from dictionary."""
+        return cls(rank=d["rank"], suit=d["suit"])
 
     def __repr__(self) -> str:
-        return self.__str__()
+        return f"Card(rank={self.rank}, suit='{self.suit}')"
 
 
-class BlackjackSimulator:
-    """Simulator for running blackjack hands."""
+class Deck:
+    """Manages a deck or shoe of cards."""
 
-    def __init__(
-        self,
-        num_decks: int = 6,
-        dealer_stands_on_17: bool = True,
-        double_after_split: bool = True,
-        surrender_allowed: bool = True,
-        blackjack_pays: float = 1.5,
-        seed: Optional[int] = None,
-    ) -> None:
-        self.game = BlackjackGame(
-            num_decks=num_decks,
-            dealer_stands_on_17=dealer_stands_on_17,
-            double_after_split=double_after_split,
-            surrender_allowed=surrender_allowed,
-            blackjack_pays=blackjack_pays,
-            seed=seed,
-        )
-        self.stats = SimulatorStats()
-        self.results: List[BlackjackResult] = []
-        self._bet_strategy = self._fixed_bet_strategy
-
-    def _fixed_bet_strategy(self, stats: SimulatorStats) -> float:
-        """Fixed bet strategy: always bet 1.0."""
-        return 1.0
-
-    def _flat_bet_strategy(self, stats: SimulatorStats) -> float:
-        """Flat bet strategy: always bet 1.0."""
-        return 1.0
-
-    def _martingale_strategy(self, stats: SimulatorStats) -> float:
-        """Martingale betting strategy: double after loss, reset after win."""
-        if stats.current_streak < 0:
-            return 2 ** (-stats.current_streak)
-        return 1.0
-
-    def _reverse_martingale_strategy(self, stats: SimulatorStats) -> float:
-        """Reverse Martingale: double after win, reset after loss."""
-        if stats.current_streak > 0:
-            return 2 ** stats.current_streak
-        return 1.0
-
-    def set_bet_strategy(self, strategy_name: str) -> None:
-        """Set the betting strategy."""
-        strategies = {
-            "fixed": self._fixed_bet_strategy,
-            "flat": self._flat_bet_strategy,
-            "martingale": self._martingale_strategy,
-            "reverse_martingale": self._reverse_martingale_strategy,
-        }
-        if strategy_name in strategies:
-            self._bet_strategy = strategies[strategy_name]
-        else:
-            raise ValueError(f"Unknown bet strategy: {strategy_name}")
-
-    def run_round(self, bet: Optional[float] = None) -> BlackjackResult:
-        """Run a single round of blackjack."""
-        if bet is None:
-            bet = self._bet_strategy(self.stats)
-
-        result = self.game.play_round(bet)
-        self.stats.update(result)
-        self.results.append(result)
-        return result
-
-    def run_simulation(self, num_rounds: int, bet: Optional[float] = None) -> SimulatorStats:
-        """Run a simulation for a specified number of rounds."""
-        for _ in range(num_rounds):
-            self.run_round(bet)
-        return self.stats
+    def __init__(self, num_decks: int = 1):
+        """Initialize a deck.
+        
+        Args:
+            num_decks: Number of decks in the shoe (default: 1)
+        """
+        self._cards: List[Card] = []
+        self.num_decks = num_decks
+        self.reset()
 
     def reset(self) -> None:
-        """Reset the simulator."""
-        self.game.reset()
-        self.stats = SimulatorStats()
-        self.results.clear()
+        """Reset and shuffle the deck."""
+        self._cards = []
+        for _ in range(self.num_decks):
+            for suit in Card.SUITS:
+                for rank in Card.RANKS:
+                    self._cards.append(Card(rank=rank, suit=suit))
+        random.shuffle(self._cards)
 
-    def get_summary(self) -> dict:
-        """Get a summary of the simulation."""
-        return self.stats.to_dict()
+    def draw(self) -> Card:
+        """Draw a card from the deck.
+        
+        Returns:
+            The drawn card
+            
+        Raises:
+            IndexError: If deck is empty
+        """
+        if not self._cards:
+            self.reset()
+        return self._cards.pop()
 
-    def __str__(self) -> str:
-        return f"BlackjackSimulator(stats={self.stats})"
+    @property
+    def remaining_cards(self) -> int:
+        """Get number of cards remaining in the deck."""
+        return len(self._cards)
 
-    def __repr__(self) -> str:
-        return self.__str__()
+    def __len__(self) -> int:
+        """Get number of cards in deck."""
+        return len(self._cards)
+
+
+class Hand:
+    """Represents a player's or dealer's hand of cards."""
+
+    def __init__(self):
+        """Initialize an empty hand."""
+        self.cards: List[Card] = []
+        self.stood: bool = False
+        self.double: bool = False
+        self.split: bool = False
+        self.surrendered: bool = False
+        self._total: Optional[int] = None
+        self._is_soft: Optional[bool] = None
+
+    @property
+    def total(self) -> int:
+        """Calculate hand total with optimal ace counting."""
+        if self._total is not None:
+            return self._total
+
+        total = 0
+        aces = 0
+
+        for card in self.cards:
+            total += card.value
+            if card.is_ace:
+                aces += 1
+
+        # Count aces as 11 if it doesn't bust, otherwise 1
+        while total <= 21 and aces > 0:
+            if total + 10 <= 21:
+                total += 10
+                aces -= 1
+
+        self._total = total
+        return total
+
+    @property
+    def is_soft(self) -> bool:
+        """Check if hand is soft (has an ace counted as 11)."""
+        if not any(card.is_ace for card in self.cards):
+            return False
+        
+        # Calculate if ace is being counted as 11
+        total = sum(card.value for card in self.cards)
+        aces = sum(1 for card in self.cards if card.is_ace)
+        
+        # Count aces as 11 if it doesn't bust
+        while total <= 21 and aces > 0:
+            if total + 10 <= 21:
+                return True
+            aces -= 1
+        
+        return False
+
+    @property
+    def is_blackjack(self) -> bool:
+        """Check if hand is a natural blackjack."""
+        return len(self.cards) == 2 and self.total == 21
+
+    @property
+    def is_bust(self) -> bool:
+        """Check if hand has busted."""
+        return self.total > 21
+
+    @property
+    def is_pair(self) -> bool:
+        """Check if hand is a pair."""
+        return len(self.cards) == 2 and self.cards[0].rank == self.cards[1].rank
+
+    @property
+    def pair_rank(self) -> Optional[int]:
+        """Get the rank of the pair if hand is a pair."""
+        if self.is_pair:
+            return self.cards[0].rank
+        return None
+
+    @property
+    def can_double(self) -> bool:
+        """Check if hand can be doubled (only 2 cards and not already doubled)."""
+        return len(self.cards) == 2 and not self.double
+
+    @property
+    def can_split(self) -> bool:
+        """Check if hand can be split (only 2 cards and is a pair)."""
+        return self.is_pair
+
+    def add_card(self, card: Card) -> None:
+        """Add a card to the hand.
+        
+        Args:
+            card: The card to add
+        """
+        self.cards.append(card)
+        self._total = None  # Reset cached total
+        self._is_soft = None  # Reset cached soft status
+
+    def reset(self) -> None:
+        """Reset the hand to empty state."""
+        self.cards = []
+        self.stood = False
+        self.double = False
+        self.split = False
+        self.surrendered = False
+        self._total = None
+        self._is_soft = None
+
+    def to_dict(self) -> dict:
+        """Convert hand to dictionary."""
+        return {
+            "cards": [card.to_dict() for card in self.cards],
+            "total": self.total,
+            "soft": self.is_soft,
+            "blackjack": self.is_blackjack,
+            "bust": self.is_bust,
+        }
+
+    @classmethod
+    def from_dict(cls, d: dict) -> "Hand":
+        """Create hand from dictionary."""
+        hand = cls()
+        hand.cards = [Card.from_dict(cd) for cd in d["cards"]]
+        hand._total = d["total"]
+        return hand
+
+
+class GameStatus(Enum):
+    """Possible game states."""
+
+    IDLE = "IDLE"
+    PLAYER_TURN = "PLAYER_TURN"
+    DEALER_TURN = "DEALER_TURN"
+    WIN = "WIN"
+    LOSS = "LOSS"
+    PUSH = "PUSH"
+    BUST = "BUST"
+    BLACKJACK = "BLACKJACK"
+    FOLD = "FOLD"
+
+
+class BlackjackResult(Enum):
+    """Possible blackjack game outcomes."""
+
+    WIN = 1.0
+    BLACKJACK = 1.5
+    PUSH = 0.0
+    LOSS = -1.0
+    BUST = -1.0
+    SURRENDER = -0.5
+
+
+@dataclass
+class BlackjackResultData:
+    """Data class for tracking individual game results."""
+
+    outcome: BlackjackResult
+    bet: float
+    payout: float
+    net_result: float
+
+    def to_dict(self) -> dict:
+        """Convert result data to dictionary."""
+        return {
+            "outcome": self.outcome.name,
+            "bet": self.bet,
+            "payout": self.payout,
+            "net_result": self.net_result,
+        }
+
+
+class SimulatorStats:
+    """Statistics tracking for blackjack simulations."""
+
+    def __init__(self):
+        """Initialize statistics tracker."""
+        self.total_episodes: int = 0
+        self.total_wins: int = 0
+        self.total_losses: int = 0
+        self.total_pushes: int = 0
+        self.total_blackjacks: int = 0
+        self.total_busts: int = 0
+        self.total_surrenders: int = 0
+        self.total_bet: float = 0.0
+        self.total_payout: float = 0.0
+
+    def update(self, outcome: BlackjackResult, bet: float = 1.0) -> None:
+        """Update statistics with a new result.
+        
+        Args:
+            outcome: The game outcome
+            bet: The bet amount for this game
+        """
+        self.total_episodes += 1
+        self.total_bet += bet
+
+        if outcome == BlackjackResult.WIN:
+            self.total_wins += 1
+            self.total_payout += bet * outcome.value
+        elif outcome == BlackjackResult.BLACKJACK:
+            self.total_blackjacks += 1
+            self.total_payout += bet * outcome.value
+        elif outcome == BlackjackResult.PUSH:
+            self.total_pushes += 1
+            self.total_payout += bet
+        elif outcome == BlackjackResult.LOSS:
+            self.total_losses += 1
+        elif outcome == BlackjackResult.BUST:
+            self.total_busts += 1
+        elif outcome == BlackjackResult.SURRENDER:
+            self.total_surrenders += 1
+            self.total_payout += bet * outcome.value
+
+    @property
+    def win_rate(self) -> float:
+        """Get win rate."""
+        if self.total_episodes == 0:
+            return 0.0
+        return self.total_wins / self.total_episodes
+
+    @property
+    def loss_rate(self) -> float:
+        """Get loss rate."""
+        if self.total_episodes == 0:
+            return 0.0
+        return self.total_losses / self.total_episodes
+
+    @property
+    def push_rate(self) -> float:
+        """Get push rate."""
+        if self.total_episodes == 0:
+            return 0.0
+        return self.total_pushes / self.total_episodes
+
+    @property
+    def blackjack_rate(self) -> float:
+        """Get blackjack rate."""
+        if self.total_episodes == 0:
+            return 0.0
+        return self.total_blackjacks / self.total_episodes
+
+    @property
+    def bust_rate(self) -> float:
+        """Get bust rate."""
+        if self.total_episodes == 0:
+            return 0.0
+        return self.total_busts / self.total_episodes
+
+    @property
+    def surrender_rate(self) -> float:
+        """Get surrender rate."""
+        if self.total_episodes == 0:
+            return 0.0
+        return self.total_surrenders / self.total_episodes
+
+    @property
+    def roi(self) -> float:
+        """Get return on investment."""
+        if self.total_bet == 0:
+            return 0.0
+        return (self.total_payout - self.total_bet) / self.total_bet
+
+    def reset(self) -> None:
+        """Reset all statistics."""
+        self.total_episodes = 0
+        self.total_wins = 0
+        self.total_losses = 0
+        self.total_pushes = 0
+        self.total_blackjacks = 0
+        self.total_busts = 0
+        self.total_surrenders = 0
+        self.total_bet = 0.0
+        self.total_payout = 0.0
+
+    def to_dict(self) -> dict:
+        """Convert statistics to dictionary."""
+        return {
+            "total_episodes": self.total_episodes,
+            "total_wins": self.total_wins,
+            "total_losses": self.total_losses,
+            "total_pushes": self.total_pushes,
+            "total_blackjacks": self.total_blackjacks,
+            "total_busts": self.total_busts,
+            "total_surrenders": self.total_surrenders,
+            "win_rate": self.win_rate,
+            "loss_rate": self.loss_rate,
+            "push_rate": self.push_rate,
+            "blackjack_rate": self.blackjack_rate,
+            "bust_rate": self.bust_rate,
+            "surrender_rate": self.surrender_rate,
+            "roi": self.roi,
+            "total_bet": self.total_bet,
+            "total_payout": self.total_payout,
+        }
+
+
+class BlackjackGame:
+    """Main blackjack game class."""
+
+    def __init__(self, num_decks: int = 6, dealer_stands_soft_17: bool = True):
+        """Initialize a blackjack game.
+        
+        Args:
+            num_decks: Number of decks in the shoe (default: 6)
+            dealer_stands_soft_17: Whether dealer stands on soft 17 (default: True)
+        """
+        self.deck = Deck(num_decks=num_decks)
+        self.player_hand = Hand()
+        self.dealer_hand = Hand()
+        self.status = GameStatus.IDLE
+        self.result: Optional[BlackjackResultData] = None
+        self.dealer_stands_soft_17 = dealer_stands_soft_17
+        self.dealer_upcard: Optional[Card] = None
+
+    def reset(self) -> None:
+        """Reset the game to initial state."""
+        self.player_hand.reset()
+        self.dealer_hand.reset()
+        self.status = GameStatus.IDLE
+        self.result = None
+        self.dealer_upcard = None
+
+    def deal_initial_cards(self) -> BlackjackResultData:
+        """Deal initial cards to player and dealer.
+        
+        Returns:
+            BlackjackResultData with the result of the initial deal
+        """
+        self.reset()
+        
+        # Deal 2 cards to each
+        self.player_hand.add_card(self.deck.draw())
+        self.dealer_hand.add_card(self.deck.draw())
+        self.player_hand.add_card(self.deck.draw())
+        self.dealer_hand.add_card(self.deck.draw())
+        
+        # Set dealer upcard
+        self.dealer_upcard = self.dealer_hand.cards[0]
+        
+        # Check for player blackjack
+        if self.player_hand.is_blackjack:
+            self.status = GameStatus.BLACKJACK
+            bet = 1.0
+            self.result = BlackjackResultData(
+                outcome=BlackjackResult.BLACKJACK,
+                bet=bet,
+                payout=bet * 1.5,
+                net_result=bet * 0.5
+            )
+            return self.result
+        else:
+            self.status = GameStatus.PLAYER_TURN
+            # Return push for initial deal if no blackjack
+            bet = 1.0
+            self.result = BlackjackResultData(
+                outcome=BlackjackResult.PUSH,
+                bet=bet,
+                payout=bet,
+                net_result=0.0
+            )
+            return self.result
+
+    def player_hit(self) -> None:
+        """Player hits (takes another card)."""
+        if self.status != GameStatus.PLAYER_TURN:
+            raise ValueError("Cannot hit - not player's turn")
+        
+        self.player_hand.add_card(self.deck.draw())
+        
+        if self.player_hand.is_bust:
+            self.status = GameStatus.BUST
+        elif self.player_hand.is_blackjack:
+            self.status = GameStatus.BLACKJACK
+        else:
+            self.status = GameStatus.PLAYER_TURN
+
+    def player_stand(self) -> None:
+        """Player stands (ends their turn)."""
+        if self.status != GameStatus.PLAYER_TURN:
+            raise ValueError("Cannot stand - not player's turn")
+        
+        self.player_hand.stood = True
+        self.status = GameStatus.DEALER_TURN
+
+    def player_double(self) -> None:
+        """Player doubles their bet and takes one card."""
+        if self.status != GameStatus.PLAYER_TURN:
+            raise ValueError("Cannot double - not player's turn")
+        
+        self.player_hand.double = True
+        self.player_hit()
+        self.status = GameStatus.DEALER_TURN
+
+    def player_surrender(self) -> None:
+        """Player surrenders (gives up half their bet)."""
+        if self.status != GameStatus.PLAYER_TURN:
+            raise ValueError("Cannot surrender - not player's turn")
+        
+        self.player_hand.surrendered = True
+        self.status = GameStatus.FOLD
+
+    def dealer_play(self) -> None:
+        """Dealer plays their hand."""
+        if self.status != GameStatus.DEALER_TURN:
+            raise ValueError("Cannot dealer play - not dealer's turn")
+        
+        while True:
+            # Check if dealer should hit
+            should_hit = False
+            
+            if self.dealer_hand.total < 17:
+                should_hit = True
+            elif self.dealer_hand.total == 17:
+                if self.dealer_stands_soft_17:
+                    if self.dealer_hand.is_soft:
+                        should_hit = False
+                    else:
+                        should_hit = False
+                else:
+                    should_hit = True
+            else:
+                should_hit = False
+            
+            if should_hit:
+                self.dealer_hand.add_card(self.deck.draw())
+            else:
+                self.dealer_hand.stood = True
+                break
+
+    def determine_result(self) -> None:
+        """Determine the game result."""
+        if self.status in [GameStatus.BUST, GameStatus.FOLD]:
+            return
+        
+        if self.player_hand.is_blackjack:
+            if self.dealer_hand.is_blackjack:
+                self.status = GameStatus.PUSH
+            else:
+                self.status = GameStatus.BLACKJACK
+        elif self.player_hand.is_bust:
+            self.status = GameStatus.BUST
+        elif self.dealer_hand.is_bust:
+            self.status = GameStatus.WIN
+        elif self.player_hand.total > self.dealer_hand.total:
+            self.status = GameStatus.WIN
+        elif self.player_hand.total < self.dealer_hand.total:
+            self.status = GameStatus.LOSS
+        else:
+            self.status = GameStatus.PUSH
+
+    def play_round(self) -> BlackjackResult:
+        """Play a complete round of blackjack.
+        
+        Returns:
+            The game result
+        """
+        self.deal_initial_cards()
+        
+        # Player turn
+        while self.status == GameStatus.PLAYER_TURN:
+            # Simple strategy: hit on soft 17 or less, stand on hard 17 or more
+            if self.player_hand.total < 17:
+                self.player_hit()
+            else:
+                self.player_stand()
+        
+        # Dealer turn
+        if self.status == GameStatus.DEALER_TURN:
+            self.dealer_play()
+        
+        # Determine result
+        self.determine_result()
+        
+        # Calculate result data
+        bet = 1.0
+        if self.status == GameStatus.WIN:
+            self.result = BlackjackResultData(
+                outcome=BlackjackResult.WIN,
+                bet=bet,
+                payout=bet,
+                net_result=bet
+            )
+        elif self.status == GameStatus.BLACKJACK:
+            self.result = BlackjackResultData(
+                outcome=BlackjackResult.BLACKJACK,
+                bet=bet,
+                payout=bet * 1.5,
+                net_result=bet * 0.5
+            )
+        elif self.status == GameStatus.PUSH:
+            self.result = BlackjackResultData(
+                outcome=BlackjackResult.PUSH,
+                bet=bet,
+                payout=bet,
+                net_result=0.0
+            )
+        elif self.status == GameStatus.LOSS:
+            self.result = BlackjackResultData(
+                outcome=BlackjackResult.LOSS,
+                bet=bet,
+                payout=0.0,
+                net_result=-bet
+            )
+        elif self.status == GameStatus.BUST:
+            self.result = BlackjackResultData(
+                outcome=BlackjackResult.BUST,
+                bet=bet,
+                payout=0.0,
+                net_result=-bet
+            )
+        elif self.status == GameStatus.FOLD:
+            self.result = BlackjackResultData(
+                outcome=BlackjackResult.SURRENDER,
+                bet=bet,
+                payout=bet * 0.5,
+                net_result=-bet * 0.5
+            )
+        
+        return self.result.outcome
+
+    def get_player_hand(self) -> Hand:
+        """Get player's hand."""
+        return self.player_hand
+
+    def get_dealer_hand(self) -> Hand:
+        """Get dealer's hand."""
+        return self.dealer_hand
+
+    def get_dealer_upcard(self) -> Optional[Card]:
+        """Get dealer's upcard."""
+        return self.dealer_upcard
+
+    def get_status(self) -> GameStatus:
+        """Get current game status."""
+        return self.status
+
+    def get_result(self) -> Optional[BlackjackResultData]:
+        """Get game result."""
+        return self.result

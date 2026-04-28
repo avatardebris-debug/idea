@@ -3,16 +3,16 @@
 from __future__ import annotations
 
 import re
-from dropship_seo.config import Config, ScoringConfig
+from dropship_seo.config import AppConfig, SEOConfig, get_config
 from dropship_seo.models import Issue, Product, SEOReport
 
 
 class Analyzer:
     """Analyzes a Product and produces an SEOReport with scores and issues."""
 
-    def __init__(self, config: Config | None = None) -> None:
-        self.config = config or Config()
-        self.scoring = self.config.scoring
+    def __init__(self, config: AppConfig | None = None) -> None:
+        self.config = config or get_config().config
+        self.scoring = self.config.seo
 
     def analyze(self, product: Product) -> SEOReport:
         """Analyze a product and return an SEOReport.
@@ -66,22 +66,22 @@ class Analyzer:
             return 0
 
         # Ideal length: 50-70 chars
-        if self.scoring.title_min <= length <= self.scoring.title_max:
+        if self.scoring.min_title_length <= length <= self.scoring.max_title_length:
             return 20
-        elif 30 <= length < self.scoring.title_min:
+        elif 30 <= length < self.scoring.min_title_length:
             issues.append(Issue(
                 severity="warning",
                 category="title",
                 message=f"Product name is too short ({length} chars).",
-                suggestion=f"Expand the product name to at least {self.scoring.title_min} characters for better SEO.",
+                suggestion=f"Expand the product name to at least {self.scoring.min_title_length} characters for better SEO.",
             ))
             return 10
-        elif length > self.scoring.title_max:
+        elif length > self.scoring.max_title_length:
             issues.append(Issue(
                 severity="warning",
                 category="title",
                 message=f"Product name is too long ({length} chars).",
-                suggestion=f"Trim the product name to around {self.scoring.title_max} characters for optimal display.",
+                suggestion=f"Trim the product name to around {self.scoring.max_title_length} characters for optimal display.",
             ))
             return 12
         else:
@@ -90,7 +90,7 @@ class Analyzer:
                 severity="warning",
                 category="title",
                 message=f"Product name is short ({length} chars).",
-                suggestion=f"Expand the product name to at least {self.scoring.title_min} characters.",
+                suggestion=f"Expand the product name to at least {self.scoring.min_title_length} characters.",
             ))
             return 5
 
@@ -108,22 +108,22 @@ class Analyzer:
             ))
             return 0
 
-        if self.scoring.meta_desc_min <= length <= self.scoring.meta_desc_max:
+        if self.scoring.min_description_length <= length <= self.scoring.max_description_length:
             return 20
-        elif 80 <= length < self.scoring.meta_desc_min:
+        elif 80 <= length < self.scoring.min_description_length:
             issues.append(Issue(
                 severity="warning",
                 category="meta_description",
                 message=f"Meta description is too short ({length} chars).",
-                suggestion=f"Expand the description to at least {self.scoring.meta_desc_min} characters.",
+                suggestion=f"Expand the description to at least {self.scoring.min_description_length} characters.",
             ))
             return 10
-        elif length > self.scoring.meta_desc_max:
+        elif length > self.scoring.max_description_length:
             issues.append(Issue(
                 severity="warning",
                 category="meta_description",
                 message=f"Meta description is too long ({length} chars).",
-                suggestion=f"Trim the description to around {self.scoring.meta_desc_max} characters.",
+                suggestion=f"Trim the description to around {self.scoring.max_description_length} characters.",
             ))
             return 12
         else:
@@ -131,7 +131,7 @@ class Analyzer:
                 severity="warning",
                 category="meta_description",
                 message=f"Meta description is short ({length} chars).",
-                suggestion=f"Expand the description to at least {self.scoring.meta_desc_min} characters.",
+                suggestion=f"Expand the description to at least {self.scoring.min_description_length} characters.",
             ))
             return 5
 

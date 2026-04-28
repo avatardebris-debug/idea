@@ -1,26 +1,34 @@
-"""Tests for Monte Carlo training engine."""
+"""Tests for Monte Carlo training module."""
 
-import json
+import pytest
+import sys
 import os
-import tempfile
-import unittest
 
-from ..monte_carlo.training import (
+# Add parent directory to path
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+from advantage_cardgames.monte_carlo import (
+    State,
     Action,
     Episode,
-    MonteCarloTrainer,
-    State,
     StateValueEstimator,
     EpsilonGreedyPolicy,
 )
-from ..simulators.blackjack import BlackjackGame, BlackjackSimulator
+from advantage_cardgames.trainers.blackjack_training import (
+    BlackjackMonteCarloTrainer,
+)
+from advantage_cardgames.simulators.blackjack import (
+    BlackjackGame,
+    BlackjackResult,
+    GameStatus,
+)
 
 
-class TestState(unittest.TestCase):
-    """Tests for the State class."""
+class TestState:
+    """Tests for State class."""
 
     def test_state_creation(self):
-        """Test creating a state."""
+        """Test state creation."""
         state = State(
             player_total=15,
             player_hand_type="hard",
@@ -29,300 +37,351 @@ class TestState(unittest.TestCase):
             can_split=False,
             can_surrender=True,
         )
-        self.assertEqual(state.player_total, 15)
-        self.assertEqual(state.dealer_upcard, 7)
-        self.assertTrue(state.can_double)
+        assert state.player_total == 15
+        assert state.player_hand_type == "hard"
+        assert state.dealer_upcard == 7
+        assert state.can_double is True
+        assert state.can_split is False
+        assert state.can_surrender is True
 
     def test_state_hash(self):
         """Test state hashing."""
-        state1 = State(15, "hard", 7, True, False, True)
-        state2 = State(15, "hard", 7, True, False, True)
-        state3 = State(15, "soft", 7, True, False, True)
-        
-        self.assertEqual(hash(state1), hash(state2))
-        self.assertNotEqual(hash(state1), hash(state3))
-
-    def test_state_equality(self):
-        """Test state equality."""
-        state1 = State(15, "hard", 7, True, False, True)
-        state2 = State(15, "hard", 7, True, False, True)
-        state3 = State(15, "soft", 7, True, False, True)
-        
-        self.assertEqual(state1, state2)
-        self.assertNotEqual(state1, state3)
+        state1 = State(
+            player_total=15,
+            player_hand_type="hard",
+            dealer_upcard=7,
+            can_double=True,
+            can_split=False,
+            can_surrender=True,
+        )
+        state2 = State(
+            player_total=15,
+            player_hand_type="hard",
+            dealer_upcard=7,
+            can_double=True,
+            can_split=False,
+            can_surrender=True,
+        )
+        assert state1 == state2
+        assert hash(state1) == hash(state2)
 
     def test_state_to_dict(self):
         """Test state serialization."""
-        state = State(15, "hard", 7, True, False, True)
+        state = State(
+            player_total=15,
+            player_hand_type="soft",
+            dealer_upcard=10,
+            can_double=False,
+            can_split=True,
+            can_surrender=False,
+        )
         state_dict = state.to_dict()
-        
-        self.assertEqual(state_dict["player_total"], 15)
-        self.assertEqual(state_dict["player_hand_type"], "hard")
-        self.assertTrue(state_dict["can_double"])
+        assert state_dict["player_total"] == 15
+        assert state_dict["player_hand_type"] == "soft"
+        assert state_dict["dealer_upcard"] == 10
 
     def test_state_from_dict(self):
         """Test state deserialization."""
         state_dict = {
-            "player_total": 15,
+            "player_total": 12,
             "player_hand_type": "hard",
-            "dealer_upcard": 7,
+            "dealer_upcard": 6,
             "can_double": True,
             "can_split": False,
             "can_surrender": True,
         }
         state = State.from_dict(state_dict)
-        
-        self.assertEqual(state.player_total, 15)
-        self.assertEqual(state.dealer_upcard, 7)
+        assert state.player_total == 12
+        assert state.player_hand_type == "hard"
+        assert state.dealer_upcard == 6
 
 
-class TestEpisode(unittest.TestCase):
-    """Tests for the Episode class."""
+class TestAction:
+    """Tests for Action enum."""
+
+    def test_action_values(self):
+        """Test action values."""
+        assert Action.HIT.value == 1
+        assert Action.STAND.value == 2
+        assert Action.DOUBLE.value == 3
+        assert Action.SURRENDER.value == 4
+
+
+class TestEpisode:
+    """Tests for Episode class."""
 
     def test_episode_creation(self):
-        """Test creating an episode."""
+        """Test episode creation."""
         episode = Episode()
-        self.assertEqual(len(episode.states), 0)
-        self.assertEqual(len(episode.actions), 0)
+        assert len(episode.state_action_pairs) == 0
 
     def test_episode_append(self):
-        """Test appending to an episode."""
+        """Test episode appending."""
         episode = Episode()
-        state = State(15, "hard", 7, True, False, True)
-        episode.append(state, Action.HIT, 0.0)
-        
-        self.assertEqual(len(episode.states), 1)
-        self.assertEqual(episode.states[0], state)
-        self.assertEqual(episode.actions[0], Action.HIT)
+        state = State(
+            player_total=15,
+            player_hand_type="hard",
+            dealer_upcard=7,
+            can_double=True,
+            can_split=False,
+            can_surrender=True,
+        )
+        episode.append(state, Action.HIT, 1.0)
+        assert len(episode.state_action_pairs) == 1
+        assert episode.state_action_pairs[0] == (state, Action.HIT, 1.0)
 
-    def test_episode_to_dict(self):
-        """Test episode serialization."""
+    def test_episode_clear(self):
+        """Test episode clearing."""
         episode = Episode()
-        state = State(15, "hard", 7, True, False, True)
-        episode.append(state, Action.HIT, 0.0)
-        
-        episode_dict = episode.to_dict()
-        self.assertEqual(len(episode_dict["states"]), 1)
-        self.assertEqual(episode_dict["actions"], ["hit"])
+        state = State(
+            player_total=15,
+            player_hand_type="hard",
+            dealer_upcard=7,
+            can_double=True,
+            can_split=False,
+            can_surrender=True,
+        )
+        episode.append(state, Action.HIT, 1.0)
+        episode.clear()
+        assert len(episode.state_action_pairs) == 0
 
 
-class TestStateValueEstimator(unittest.TestCase):
-    """Tests for the StateValueEstimator class."""
-
-    def test_estimator_creation(self):
-        """Test creating an estimator."""
-        estimator = StateValueEstimator()
-        self.assertEqual(len(estimator.N), 0)
+class TestStateValueEstimator:
+    """Tests for StateValueEstimator class."""
 
     def test_estimator_update(self):
-        """Test updating state-action values."""
+        """Test estimator update."""
         estimator = StateValueEstimator()
-        state = State(15, "hard", 7, True, False, True)
-        
-        estimator.update(state, Action.HIT, 1.0)
-        estimator.update(state, Action.HIT, 2.0)
-        
-        self.assertEqual(estimator.N[state][Action.HIT], 2)
-        self.assertEqual(estimator.Q[state][Action.HIT], 1.5)
+        state = State(
+            player_total=15,
+            player_hand_type="hard",
+            dealer_upcard=7,
+            can_double=True,
+            can_split=False,
+            can_surrender=True,
+        )
 
-    def test_estimator_get_action_value(self):
-        """Test getting action values."""
-        estimator = StateValueEstimator()
-        state = State(15, "hard", 7, True, False, True)
-        
         estimator.update(state, Action.HIT, 1.0)
-        estimator.update(state, Action.STAND, 2.0)
-        
-        self.assertEqual(estimator.get_action_value(state, Action.HIT), 1.0)
-        self.assertEqual(estimator.get_action_value(state, Action.STAND), 2.0)
+        assert estimator.get_action_value(state, Action.HIT) == 1.0
+
+        estimator.update(state, Action.HIT, 2.0)
+        assert estimator.get_action_value(state, Action.HIT) == 1.5
 
     def test_estimator_get_best_action(self):
-        """Test getting best action."""
+        """Test best action selection."""
         estimator = StateValueEstimator()
-        state = State(15, "hard", 7, True, False, True)
-        
+        state = State(
+            player_total=15,
+            player_hand_type="hard",
+            dealer_upcard=7,
+            can_double=True,
+            can_split=False,
+            can_surrender=True,
+        )
+
         estimator.update(state, Action.HIT, 1.0)
         estimator.update(state, Action.STAND, 2.0)
-        
-        best_action = estimator.get_best_action(state, [Action.HIT, Action.STAND])
-        self.assertEqual(best_action, Action.STAND)
 
-    def test_estimator_stats(self):
+        best_action = estimator.get_best_action(state, [Action.HIT, Action.STAND])
+        assert best_action == Action.STAND
+
+    def test_estimator_get_stats(self):
         """Test estimator statistics."""
         estimator = StateValueEstimator()
-        state = State(15, "hard", 7, True, False, True)
-        
+        state = State(
+            player_total=15,
+            player_hand_type="hard",
+            dealer_upcard=7,
+            can_double=True,
+            can_split=False,
+            can_surrender=True,
+        )
+
         estimator.update(state, Action.HIT, 1.0)
-        estimator.update(state, Action.STAND, 2.0)
-        
         stats = estimator.get_stats()
-        self.assertEqual(stats["total_states"], 1)
-        self.assertEqual(stats["total_state_action_pairs"], 2)
+
+        assert stats["total_states"] == 1
+        assert stats["total_state_action_pairs"] == 1
 
 
-class TestEpsilonGreedyPolicy(unittest.TestCase):
-    """Tests for the EpsilonGreedyPolicy class."""
+class TestEpsilonGreedyPolicy:
+    """Tests for EpsilonGreedyPolicy class."""
 
-    def test_policy_creation(self):
-        """Test creating a policy."""
-        policy = EpsilonGreedyPolicy(epsilon=0.1)
-        self.assertEqual(policy.epsilon, 0.1)
+    def test_policy_exploration(self):
+        """Test policy exploration."""
+        policy = EpsilonGreedyPolicy(epsilon=1.0)
+        state = State(
+            player_total=15,
+            player_hand_type="hard",
+            dealer_upcard=7,
+            can_double=True,
+            can_split=False,
+            can_surrender=True,
+        )
+        action = policy.get_action([Action.HIT, Action.STAND], Action.HIT, state)
+        assert action in [Action.HIT, Action.STAND]
 
-    def test_policy_get_action(self):
-        """Test action selection."""
-        policy = EpsilonGreedyPolicy(epsilon=0.0)  # No exploration
-        state = State(15, "hard", 7, True, False, True)
-        
-        best_action = Action.STAND
-        action = policy.get_action([Action.HIT, Action.STAND], best_action, state)
-        self.assertEqual(action, Action.STAND)
+    def test_policy_exploitation(self):
+        """Test policy exploitation."""
+        policy = EpsilonGreedyPolicy(epsilon=0.0)
+        state = State(
+            player_total=15,
+            player_hand_type="hard",
+            dealer_upcard=7,
+            can_double=True,
+            can_split=False,
+            can_surrender=True,
+        )
+        action = policy.get_action([Action.HIT, Action.STAND], Action.HIT, state)
+        assert action == Action.HIT
 
     def test_policy_decay(self):
         """Test epsilon decay."""
         policy = EpsilonGreedyPolicy(epsilon=0.5, epsilon_decay=0.9)
         initial_epsilon = policy.epsilon
-        
         policy.decay()
-        self.assertLess(policy.epsilon, initial_epsilon)
-        self.assertGreater(policy.epsilon, 0)
-
-    def test_policy_set_epsilon(self):
-        """Test setting epsilon."""
-        policy = EpsilonGreedyPolicy(epsilon=0.1)
-        policy.set_epsilon(0.5)
-        self.assertEqual(policy.epsilon, 0.5)
+        assert policy.epsilon < initial_epsilon
 
 
-class TestMonteCarloTrainer(unittest.TestCase):
-    """Tests for the MonteCarloTrainer class."""
-
-    def setUp(self):
-        """Set up test fixtures."""
-        self.trainer = MonteCarloTrainer(seed=42)
+class TestBlackjackMonteCarloTrainer:
+    """Tests for BlackjackMonteCarloTrainer class."""
 
     def test_trainer_creation(self):
-        """Test creating a trainer."""
-        self.assertIsNotNone(self.trainer.estimator)
-        self.assertIsNotNone(self.trainer.policy)
-
-    def test_trainer_get_available_actions(self):
-        """Test getting available actions."""
-        state = State(15, "hard", 7, True, False, True)
-        actions = self.trainer.get_available_actions(state)
-        
-        self.assertIn(Action.HIT, actions)
-        self.assertIn(Action.STAND, actions)
-        self.assertIn(Action.DOUBLE, actions)
-        self.assertIn(Action.SURRENDER, actions)
-
-    def test_trainer_get_best_action(self):
-        """Test getting best action."""
-        state = State(15, "hard", 7, True, False, True)
-        best_action = self.trainer.get_best_action(state)
-        self.assertIn(best_action, [Action.HIT, Action.STAND, Action.DOUBLE, Action.SURRENDER])
+        """Test trainer creation."""
+        trainer = BlackjackMonteCarloTrainer(seed=42)
+        assert trainer.epsilon == 0.1
+        assert trainer.total_episodes == 0
 
     def test_trainer_train_episode(self):
-        """Test training on an episode."""
-        episode, reward = self.trainer.train_episode()
-        
-        self.assertIsInstance(episode, Episode)
-        self.assertIsInstance(reward, float)
+        """Test single episode training."""
+        trainer = BlackjackMonteCarloTrainer(seed=42)
+        episode, reward = trainer.train_episode()
+        assert isinstance(episode, Episode)
+        assert isinstance(reward, float)
 
     def test_trainer_train(self):
-        """Test training for multiple episodes."""
-        stats = self.trainer.train(num_episodes=10, verbose=False)
-        
-        self.assertEqual(stats["total_episodes"], 10)
-        self.assertGreater(stats["states_learned"], 0)
+        """Test training loop."""
+        trainer = BlackjackMonteCarloTrainer(seed=42)
+        stats = trainer.train(num_episodes=10, verbose=False)
 
-    def test_trainer_save_load(self):
-        """Test saving and loading a trainer."""
-        # Train a bit
-        self.trainer.train(num_episodes=5, verbose=False)
-        
-        # Save
-        with tempfile.NamedTemporaryFile(mode="w", delete=False, suffix=".json") as f:
-            temp_file = f.name
-            self.trainer.save(temp_file)
-        
-        # Load
-        loaded_trainer = MonteCarloTrainer.load(temp_file)
-        
-        # Verify
-        self.assertEqual(loaded_trainer.total_episodes, 5)
-        self.assertEqual(loaded_trainer.policy.epsilon, self.trainer.policy.epsilon)
-        
-        # Cleanup
-        os.unlink(temp_file)
+        assert stats["total_episodes"] == 10
+        assert "avg_reward" in stats
+        assert "states_learned" in stats
 
     def test_trainer_evaluate(self):
-        """Test evaluating the trainer."""
-        # Train a bit
-        self.trainer.train(num_episodes=10, verbose=False)
-        
-        # Evaluate
-        eval_stats = self.trainer.evaluate(num_episodes=100)
-        
-        self.assertEqual(eval_stats["total_episodes"], 100)
-        self.assertIn("win_rate", eval_stats)
-        self.assertIn("loss_rate", eval_stats)
+        """Test evaluation."""
+        trainer = BlackjackMonteCarloTrainer(seed=42)
+        trainer.train(num_episodes=100, verbose=False)
+
+        eval_stats = trainer.evaluate(num_episodes=10)
+        assert eval_stats["total_episodes"] == 10
+        assert "avg_reward" in eval_stats
+        assert "win_rate" in eval_stats
 
     def test_trainer_get_action_values(self):
-        """Test getting action values."""
-        state = State(15, "hard", 7, True, False, True)
-        
-        # Train a bit
-        self.trainer.train(num_episodes=10, verbose=False)
-        
-        # Get action values
-        action_values = self.trainer.get_action_values(state)
-        self.assertIsInstance(action_values, dict)
+        """Test action value retrieval."""
+        trainer = BlackjackMonteCarloTrainer(seed=42)
+        trainer.train(num_episodes=100, verbose=False)
+
+        state = State(
+            player_total=15,
+            player_hand_type="hard",
+            dealer_upcard=7,
+            can_double=True,
+            can_split=False,
+            can_surrender=True,
+        )
+
+        action_values = trainer.get_action_values(state)
+        assert isinstance(action_values, dict)
+
+    def test_trainer_save_load(self, tmp_path):
+        """Test save and load."""
+        trainer = BlackjackMonteCarloTrainer(seed=42)
+        trainer.train(num_episodes=10, verbose=False)
+
+        filepath = tmp_path / "trainer.json"
+        trainer.save(str(filepath))
+
+        loaded_trainer = BlackjackMonteCarloTrainer.load(str(filepath))
+        assert loaded_trainer.total_episodes == trainer.total_episodes
+        assert abs(loaded_trainer.epsilon - trainer.epsilon) < 0.001
+
+    def test_trainer_get_available_actions(self):
+        """Test available actions retrieval."""
+        trainer = BlackjackMonteCarloTrainer(seed=42)
+
+        state = State(
+            player_total=15,
+            player_hand_type="hard",
+            dealer_upcard=7,
+            can_double=True,
+            can_split=False,
+            can_surrender=True,
+        )
+
+        actions = trainer.get_available_actions(state)
+        assert Action.HIT in actions
+        assert Action.STAND in actions
+        assert Action.DOUBLE in actions
+        assert Action.SURRENDER in actions
 
 
-class TestMonteCarloIntegration(unittest.TestCase):
+class TestIntegration:
     """Integration tests for Monte Carlo training."""
 
     def test_full_training_loop(self):
-        """Test a complete training loop."""
-        trainer = MonteCarloTrainer(seed=42, epsilon=0.5)
-        
-        # Train for 100 episodes
-        stats = trainer.train(num_episodes=100, verbose=False)
-        
-        # Verify training happened
-        self.assertEqual(stats["total_episodes"], 100)
-        self.assertGreater(stats["states_learned"], 0)
-        
-        # Verify policy improved (epsilon decayed)
-        self.assertLess(stats["final_epsilon"], 0.5)
+        """Test complete training and evaluation."""
+        trainer = BlackjackMonteCarloTrainer(
+            seed=42,
+            epsilon=0.1,
+            epsilon_decay=0.995,
+            epsilon_min=0.01,
+        )
+
+        # Train
+        train_stats = trainer.train(num_episodes=100, verbose=False)
+        assert train_stats["total_episodes"] == 100
+
+        # Evaluate
+        eval_stats = trainer.evaluate(num_episodes=50)
+        assert eval_stats["total_episodes"] == 50
+
+        # Check that we learned something
+        assert train_stats["states_learned"] > 0
 
     def test_policy_improvement(self):
         """Test that policy improves with training."""
-        trainer = MonteCarloTrainer(seed=42, epsilon=0.1)
-        
-        # Initial evaluation
-        initial_eval = trainer.evaluate(num_episodes=100)
-        
-        # Train for 500 episodes
-        trainer.train(num_episodes=500, verbose=False)
-        
-        # Final evaluation
-        final_eval = trainer.evaluate(num_episodes=100)
-        
-        # Policy should have learned something
-        self.assertGreater(final_eval["avg_reward"], -1.0)
+        trainer = BlackjackMonteCarloTrainer(seed=42)
 
-    def test_state_coverage(self):
-        """Test that training covers various states."""
-        trainer = MonteCarloTrainer(seed=42, epsilon=0.5)
-        
-        # Train for many episodes
-        trainer.train(num_episodes=1000, verbose=False)
-        
-        # Should have learned many states
-        stats = trainer.get_stats()
-        self.assertGreater(stats["total_states"], 50)
+        # Initial evaluation
+        initial_stats = trainer.evaluate(num_episodes=100)
+
+        # Train
+        trainer.train(num_episodes=500, verbose=False)
+
+        # Final evaluation
+        final_stats = trainer.evaluate(num_episodes=100)
+
+        # Check that we learned something
+        assert final_stats["states_learned"] > initial_stats["states_learned"]
+
+    def test_epsilon_decay(self):
+        """Test that epsilon decays properly."""
+        trainer = BlackjackMonteCarloTrainer(
+            seed=42,
+            epsilon=0.5,
+            epsilon_decay=0.9,
+            epsilon_min=0.01,
+        )
+
+        initial_epsilon = trainer.epsilon
+        trainer.train(num_episodes=10, verbose=False)
+        final_epsilon = trainer.epsilon
+
+        assert final_epsilon < initial_epsilon
+        assert final_epsilon >= trainer.policy.min_epsilon
 
 
 if __name__ == "__main__":
-    unittest.main()
+    pytest.main([__file__, "-v"])

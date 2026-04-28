@@ -38,7 +38,7 @@ Ideas are processed top-to-bottom. The pipeline picks the first unchecked `[ ]` 
 - [ ] **[scott adams bot/llm fine tuning]** — [scott adams bot/llm fine tuning]
 
 
-- [ ] **CSV Analyzer** — Build a Python CLI tool that reads a CSV file and prints summary statistics (row count, column names, min/max/mean for numeric columns, null counts). Include argparse, error handling for missing files and malformed CSVs, and unit tests with sample fixture files.
+- [x] **CSV Analyzer** — Build a Python CLI tool that reads a CSV file and prints summary statistics (row count, column names, min/max/mean for numeric columns, null counts). Include argparse, error handling for missing files and malformed CSVs, and unit tests with sample fixture files.
 
 - [ ] **File Deduplicator** — Build a Python script that scans a directory recursively, finds duplicate files by MD5 hash, and prints a report of duplicates grouped by hash. Optionally deletes duplicates with a --delete flag (with dry-run mode). Include unit tests.
 
@@ -61,7 +61,7 @@ Ideas are processed top-to-bottom. The pipeline picks the first unchecked `[ ]` 
 
 - [ ] **[shuffler tracker teacher]** — [visualize how decks are shuffled. Stochastaic variation whether it is an even cut 26/26 on each halff or another variation like 20/30 or 30/20 statistically distributed around 26/26]
 
-- [ ] **[ai author suite]** — [niche/topic research, keyword research,book outliner, chapter developer, chapter outliner, detail fill in, deep editor restructure format, cover designer, book cover designer, etc]
+- [x] **[ai author suite]** — [niche/topic research, keyword research,book outliner, chapter developer, chapter outliner, detail fill in, deep editor restructure format, cover designer, book cover designer, etc]
 
 - [ ] **[pocketknife of the internet]** — [new internet browser. acts like a windows/computer that you can access on a website and user interface where you can move windows within the browser around. Merges the computer's software with internet apps and websites.]
 

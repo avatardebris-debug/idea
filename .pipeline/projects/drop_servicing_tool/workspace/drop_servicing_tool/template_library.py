@@ -67,24 +67,37 @@ class TemplateLibrary:
 
     def list_templates(self, category: Optional[str] = None) -> List[str]:
         """List template names, optionally filtered by *category*."""
+        # Scan filesystem for .md files in templates directories
+        fs_templates = set()
+        for root in [self._templates_dir, self._builtin_dir]:
+            for md_file in root.rglob("*.md"):
+                name = md_file.stem
+                fs_templates.add(name)
+        
+        # Combine in-memory and filesystem templates
+        all_templates = set(self._store.keys()) | fs_templates
+        
         if category is None:
-            return list(self._store.keys())
-        return [n for n, c in self._categories.items() if c == category]
+            return sorted(all_templates)
+        return sorted([n for n in all_templates if self._categories.get(n) == category])
 
     # ---- Deletion ----
 
     def delete_template(self, name: str) -> bool:
         """Delete a template. Returns True if deleted, False if not found."""
-        if name not in self._store:
-            return False
-        del self._store[name]
+        deleted = False
+        # Remove from in-memory store
+        if name in self._store:
+            del self._store[name]
+            deleted = True
         if name in self._categories:
             del self._categories[name]
         # Remove from disk
-        for pattern in ["*.md"]:
-            for p in self._templates_dir.rglob(f"{name}.md"):
+        for root in [self._templates_dir, self._builtin_dir]:
+            for p in root.rglob(f"{name}.md"):
                 p.unlink(missing_ok=True)
-        return True
+                deleted = True
+        return deleted
 
     # ---- Builtin templates ----
 

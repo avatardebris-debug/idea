@@ -19,6 +19,7 @@ app = typer.Typer(
     name="sop",
     help="Drop Servicing Tool — define and execute SOP workflows.",
 )
+app.name = "sop"
 
 # -----------------------------------------------------------------------
 # Helper: default blog_post scaffold

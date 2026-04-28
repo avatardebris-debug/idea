@@ -18,11 +18,11 @@ from advantage_cardgames.core.hand import Hand, Outcome
 
 class GameState(Enum):
     """Possible states of a game."""
-    IDLE = "idle"
-    DEALING = "dealing"
-    PLAYING = "playing"
-    FINISHED = "finished"
-    ERROR = "error"
+    IDLE = "IDLE"
+    DEALING = "DEALING"
+    PLAYING = "PLAYING"
+    FINISHED = "FINISHED"
+    ERROR = "ERROR"
 
 
 @dataclass
@@ -38,9 +38,9 @@ class RoundResult:
     @property
     def net_result(self) -> float:
         """Net result: positive = win, negative = loss, zero = push."""
-        if self.outcome == Outcome.WIN:
-            if self.player_total == 21 and len([c for c in []]) == 2:  # blackjack pays 3:2
-                return self.bet * 1.5
+        if self.outcome == Outcome.BLACKJACK:
+            return self.bet * 1.5
+        elif self.outcome == Outcome.WIN:
             return self.bet
         elif self.outcome == Outcome.PUSH:
             return 0.0
@@ -105,10 +105,6 @@ class GameStats:
         if self.total_rounds < 2:
             return 0.0
         mean = self.net_result / self.total_rounds
-        variance = 0.0
-        for i in range(self.total_rounds):
-            # We don't have individual results stored, so approximate
-            pass
         # Approximate using win/loss distribution
         p_win = self.wins / self.total_rounds if self.total_rounds > 0 else 0
         p_loss = self.losses / self.total_rounds if self.total_rounds > 0 else 0

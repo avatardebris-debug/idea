@@ -358,13 +358,13 @@ class MarketAnalyzer:
         # Check for growing trends
         if any(pattern in combined_text for pattern in self.trend_patterns["growing"]):
             trending.append("Micro-learning and bite-sized content")
-            trending.append="Personalization and customization"
+            trending.append("Personalization and customization")
             trending.append("Community-driven learning")
         
         # Check for stable trends
         if any(pattern in combined_text for pattern in self.trend_patterns["stable"]):
             trending.append("Foundational knowledge refreshers")
-            trending.append="Best practices and case studies"
+            trending.append("Best practices and case studies")
             trending.append("Comprehensive guides and handbooks")
         
         # Add niche-specific trending topics

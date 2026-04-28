@@ -2,5 +2,6 @@
   "title": "[email tool]",
   "description": "[email processing, rules, systems, agentic instruction, systems, automations. TOol for automating the searching in emails and attachments to follow rules and organize into folders according to these rules]",
   "status": "phase_1_executing",
-  "total_phases": 6
+  "total_phases": 6,
+  "started_at": "2026-04-28T10:46:48.213359+00:00"
 }

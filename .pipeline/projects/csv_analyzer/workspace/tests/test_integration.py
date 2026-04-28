@@ -292,7 +292,8 @@ class TestIntegrationErrorHandling:
         runner = CliRunner()
         result = runner.invoke(cli, ["info", str(tmp_path / "nonexistent.csv")])
 
-        assert result.exit_code == 1
+        # Click returns exit code 2 for argument validation errors (file not found)
+        assert result.exit_code == 2
         assert "Error" in result.output
 
     def test_permission_denied(self, tmp_path: Path) -> None:

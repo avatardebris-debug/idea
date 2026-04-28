@@ -63,7 +63,7 @@ class AnalysisEngine:
 
             # Numeric statistics
             if self._is_numeric_column(col):
-                profile["numeric_stats"][col] = self._get_numeric_stats(col)
+                profile["numeric_stats"][col] = self._get_numeric_stats(col, include_all_missing=True)
 
             # Categorical statistics
             if self._is_categorical_column(col):
@@ -146,7 +146,15 @@ class AnalysisEngine:
         bool
             True if the column is numeric.
         """
-        return pd.api.types.is_numeric_dtype(self.df[col])
+        series = self.df[col]
+        # If column is already numeric dtype, return True
+        if pd.api.types.is_numeric_dtype(series):
+            return True
+        # If column has all missing values and DataFrame has rows, treat as numeric
+        # (could be numeric with missing data)
+        if series.isna().all() and len(self.df) > 0:
+            return True
+        return False
 
     def _is_categorical_column(self, col: str) -> bool:
         """Check if a column is categorical.
@@ -161,23 +169,30 @@ class AnalysisEngine:
         bool
             True if the column is categorical.
         """
-        return pd.api.types.is_string_dtype(self.df[col]) or pd.api.types.is_bool_dtype(self.df[col])
+        series = self.df[col]
+        # Check for string, bool, or datetime dtypes
+        return (pd.api.types.is_string_dtype(series) or 
+                pd.api.types.is_bool_dtype(series) or 
+                pd.api.types.is_datetime64_any_dtype(series))
 
-    def _get_numeric_stats(self, col: str) -> dict[str, Any]:
+    def _get_numeric_stats(self, col: str, include_all_missing: bool = False) -> dict[str, Any]:
         """Get statistics for a numeric column.
 
         Parameters
         ----------
         col : str
             Column name.
+        include_all_missing : bool, optional
+            Whether to include columns with all missing values. Default is False.
 
         Returns
         -------
         dict
             Dictionary of statistics.
         """
-        series = self.df[col].dropna()
+        series = self.df[col]
         count = len(series)
+        non_null_count = series.notna().sum()
 
         if count == 0:
             return {
@@ -189,13 +204,24 @@ class AnalysisEngine:
                 "median": None,
             }
 
+        if non_null_count == 0 and not include_all_missing:
+            return {
+                "count": 0,
+                "mean": None,
+                "std": None,
+                "min": None,
+                "max": None,
+                "median": None,
+            }
+
+        series_non_null = series.dropna()
         return {
-            "count": int(count),
-            "mean": float(series.mean()) if count > 0 else None,
-            "std": float(series.std()) if count > 1 else None,
-            "min": float(series.min()) if count > 0 else None,
-            "max": float(series.max()) if count > 0 else None,
-            "median": float(series.median()) if count > 0 else None,
+            "count": int(non_null_count),
+            "mean": float(series_non_null.mean()) if non_null_count > 0 else None,
+            "std": float(series_non_null.std()) if non_null_count > 1 else None,
+            "min": float(series_non_null.min()) if non_null_count > 0 else None,
+            "max": float(series_non_null.max()) if non_null_count > 0 else None,
+            "median": float(series_non_null.median()) if non_null_count > 0 else None,
         }
 
     def _get_categorical_stats(self, col: str) -> dict[str, Any]:

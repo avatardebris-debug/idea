@@ -1,29 +1,29 @@
 {
-  "extracted_at": "2026-04-25T13:34:00.941570",
+  "extracted_at": "2026-04-28T10:47:33.901363",
   "workspace_only": false,
-  "files_included": 1468,
+  "files_included": 1445,
   "resume_instructions": "1. git pull on new instance\n2. unzip this file into /workspace/idea\\ impl/\n3. python pipeline/runner.py --from-list --provider ollama --model qwen3.5:35b\n   Runner will auto-detect in-progress projects and re-queue them.",
   "projects": [
     {
       "slug": "advantage_player_cardgame_simulator_training",
       "title": "[advantage player cardgame simulator training]",
-      "status": "phase_1_executing",
+      "status": "budget_exceeded",
       "total_phases": 6,
       "phases_built": 1,
-      "workspace_files": 43
+      "workspace_files": 62
     },
     {
       "slug": "ai_author_suite",
       "title": "[ai author suite]",
-      "status": "phase_1_validating",
+      "status": "complete",
       "total_phases": 6,
-      "phases_built": 1,
-      "workspace_files": 10
+      "phases_built": 6,
+      "workspace_files": 108
     },
     {
       "slug": "csv_analyzer",
       "title": "CSV Analyzer",
-      "status": "phase_1_executing",
+      "status": "complete",
       "total_phases": 1,
       "phases_built": 1,
       "workspace_files": 31
@@ -31,18 +31,18 @@
     {
       "slug": "drop_servicing_tool",
       "title": "[drop servicing tool]",
-      "status": "phase_3_validating",
+      "status": "budget_exceeded",
       "total_phases": 3,
       "phases_built": 3,
-      "workspace_files": 524
+      "workspace_files": 539
     },
     {
       "slug": "dropshipserviceecommerce_autoseo_autometa",
       "title": "[dropship/service/ecommerce. autoSEO autometa]",
-      "status": "phase_1_validating",
+      "status": "budget_exceeded",
       "total_phases": 1,
       "phases_built": 1,
-      "workspace_files": 27
+      "workspace_files": 25
     },
     {
       "slug": "email_tool",
@@ -74,7 +74,7 @@
       "status": "phase_1_validating",
       "total_phases": 1,
       "phases_built": 1,
-      "workspace_files": 40
+      "workspace_files": 18
     },
     {
       "slug": "job_automation_tool",
@@ -82,7 +82,7 @@
       "status": "phase_1_validating",
       "total_phases": 1,
       "phases_built": 1,
-      "workspace_files": 25
+      "workspace_files": 14
     },
     {
       "slug": "json_diff_tool",
@@ -122,7 +122,7 @@
       "status": "phase_1_validating",
       "total_phases": 1,
       "phases_built": 1,
-      "workspace_files": 26
+      "workspace_files": 13
     },
     {
       "slug": "pocketknife_of_the_internet",
@@ -146,7 +146,7 @@
       "status": "phase_1_validating",
       "total_phases": 1,
       "phases_built": 1,
-      "workspace_files": 47
+      "workspace_files": 25
     },
     {
       "slug": "shuffler_tracker_teacher",
@@ -162,7 +162,7 @@
       "status": "phase_1_validating",
       "total_phases": 5,
       "phases_built": 1,
-      "workspace_files": 73
+      "workspace_files": 51
     },
     {
       "slug": "state",
@@ -194,7 +194,7 @@
       "status": "phase_1_validating",
       "total_phases": 1,
       "phases_built": 1,
-      "workspace_files": 30
+      "workspace_files": 15
     },
     {
       "slug": "tim_ferriss_learning_tool",
@@ -218,7 +218,7 @@
       "status": "phase_1_validating",
       "total_phases": 1,
       "phases_built": 1,
-      "workspace_files": 23
+      "workspace_files": 11
     },
     {
       "slug": "url_health_checker",
@@ -234,7 +234,7 @@
       "status": "phase_1_executing",
       "total_phases": 5,
       "phases_built": 5,
-      "workspace_files": 49
+      "workspace_files": 29
     },
     {
       "slug": "vr_practice_mode",
@@ -250,7 +250,7 @@
       "status": "phase_1_executing",
       "total_phases": 1,
       "phases_built": 1,
-      "workspace_files": 33
+      "workspace_files": 22
     },
     {
       "slug": "workspace",
@@ -274,7 +274,7 @@
       "status": "phase_1_executing",
       "total_phases": 1,
       "phases_built": 1,
-      "workspace_files": 23
+      "workspace_files": 10
     },
     {
       "slug": "zillow",

@@ -15,7 +15,7 @@ from advantage_cardgames.monte_carlo import (
     State,
     StateValueEstimator,
 )
-from advantage_cardgames.simulators import BlackjackGame
+from advantage_cardgames.simulators.blackjack import BlackjackGame
 
 
 class TestState:
@@ -224,6 +224,11 @@ class TestMonteCarloTrainer:
     def trainer(self):
         """Create a trainer for testing."""
         return MonteCarloTrainer(epsilon=0.1, seed=42)
+
+    @pytest.fixture
+    def game(self):
+        """Create a game for testing."""
+        return BlackjackGame(num_decks=6, dealer_stands_soft_17=True, seed=42)
 
     def test_trainer_creation(self, trainer):
         """Test creating a trainer."""

@@ -181,3 +181,7 @@ def _coerce(value: Any, target_type: str) -> Any:
             f"Input '{value}' expected type '{target_type}' (got {type(value).__name__})."
         )
     return value
+
+
+# Export Step class for convenience
+Step = SOPStep

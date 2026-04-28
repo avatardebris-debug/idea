@@ -7,8 +7,7 @@ This module provides the fundamental building blocks for card game simulations:
 - HandType: Enum for classifying hand types (hard, soft, pair)
 """
 
-from .card import Card
-from .deck import Deck
+from .deck import Card, Deck
 from .hand import Hand, HandType
 
 __all__ = [

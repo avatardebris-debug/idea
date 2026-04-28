@@ -16,19 +16,19 @@ from advantage_cardgames.core.deck import Card
 
 class HandType(Enum):
     """Types of blackjack hands."""
-    HARD = "hard"
-    SOFT = "soft"
-    PAIR = "pair"
+    HARD = "HARD"
+    SOFT = "SOFT"
+    PAIR = "PAIR"
 
 
 class Outcome(Enum):
     """Possible outcomes of a blackjack hand."""
-    BLACKJACK = "blackjack"
-    WIN = "win"
-    PUSH = "push"
-    LOSS = "loss"
-    BUST = "bust"
-    FOLD = "fold"  # surrendered
+    BLACKJACK = "BLACKJACK"
+    WIN = "WIN"
+    PUSH = "PUSH"
+    LOSS = "LOSS"
+    BUST = "BUST"
+    FOLD = "FOLD"  # surrendered
 
 
 @dataclass
@@ -159,6 +159,58 @@ class Hand:
         if self.is_bust:
             return self.hard_total
         return self.soft_total
+
+    @total.setter
+    def total(self, value: int) -> None:
+        """Set the total (for testing purposes)."""
+        self._total = value
+
+    @property
+    def stood(self) -> bool:
+        """Check if player has stood."""
+        return self.is_finished
+
+    @property
+    def double(self) -> bool:
+        """Check if hand is doubled."""
+        return self.is_doubled
+
+    @property
+    def blackjack(self) -> bool:
+        """Check if hand is blackjack."""
+        return self.is_blackjack
+
+    @property
+    def can_split(self) -> bool:
+        """Check if hand can be split (has exactly 2 cards of same rank)."""
+        return (
+            len(self.cards) == 2 and
+            self.cards[0].rank == self.cards[1].rank and
+            not self.is_split
+        )
+
+    def to_dict(self) -> dict:
+        """Convert hand to dictionary."""
+        return {
+            "cards": [card.to_dict() for card in self.cards],
+            "is_split": self.is_split,
+            "is_doubled": self.is_doubled,
+            "is_surrendered": self.is_surrendered,
+            "is_finished": self.is_finished,
+        }
+
+    @classmethod
+    def from_dict(cls, d: dict) -> "Hand":
+        """Create hand from dictionary."""
+        from advantage_cardgames.core.deck import Card
+        hand = cls(
+            cards=[Card.from_dict(card_dict) for card_dict in d["cards"]],
+            is_split=d["is_split"],
+            is_doubled=d["is_doubled"],
+            is_surrendered=d["is_surrendered"],
+            is_finished=d["is_finished"],
+        )
+        return hand
 
     def __str__(self) -> str:
         cards_str = ", ".join(str(card) for card in self.cards)

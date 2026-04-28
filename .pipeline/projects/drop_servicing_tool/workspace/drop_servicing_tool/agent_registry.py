@@ -23,6 +23,24 @@ class AgentRegistry:
         self._agents: Dict[str, Any] = {}
         # Metadata store (name -> metadata dict)
         self._metadata: Dict[str, Dict[str, Any]] = {}
+        # Load existing agents from disk
+        self._load_existing_agents()
+    
+    def _load_existing_agents(self) -> None:
+        """Load existing agents from disk."""
+        if not self._agents_dir.exists():
+            return
+        
+        for agent_file in self._agents_dir.glob("*.json"):
+            try:
+                data = json.loads(agent_file.read_text(encoding="utf-8"))
+                name = data.get("name")
+                if name:
+                    self._agents[name] = data.get("client", {})
+                    self._metadata[name] = data.get("metadata", {})
+            except (json.JSONDecodeError, IOError):
+                # Skip corrupted files
+                continue
 
     # ---- Registration ----
 
@@ -39,6 +57,7 @@ class AgentRegistry:
         agent_file = self._agents_dir / f"{name}.json"
         agent_data = {
             "name": name,
+            "client": client,
             "metadata": self._metadata[name],
         }
         agent_file.write_text(json.dumps(agent_data, indent=2), encoding="utf-8")

@@ -177,3 +177,86 @@ class TestAnalysisEngine:
         assert profile["numeric_stats"]["a"]["count"] == 4
         assert profile["numeric_stats"]["a"]["mean"] == 3.0
         assert profile["missing_values"]["a"]["count"] == 1
+
+class TestAnalysisEngineEdgeCases:
+    """Additional edge case tests for AnalysisEngine."""
+
+    def test_profile_with_all_nan_numeric(self) -> None:
+        """Test profiling numeric column with all NaN values."""
+        df = pd.DataFrame({
+            "a": [None, None, None],
+            "b": [1, 2, 3],
+        })
+        engine = AnalysisEngine(df)
+        profile = engine.profile()
+
+        assert "a" in profile["numeric_stats"]
+        assert profile["numeric_stats"]["a"]["count"] == 0
+        assert profile["numeric_stats"]["a"]["mean"] is None
+        assert profile["numeric_stats"]["a"]["std"] is None
+        assert profile["numeric_stats"]["a"]["min"] is None
+        assert profile["numeric_stats"]["a"]["max"] is None
+        assert profile["numeric_stats"]["a"]["median"] is None
+
+    def test_profile_with_special_floats(self) -> None:
+        """Test profiling with special float values (inf, -inf, nan)."""
+        df = pd.DataFrame({
+            "a": [1.0, float('inf'), float('-inf'), float('nan')],
+        })
+        engine = AnalysisEngine(df)
+        profile = engine.profile()
+
+        assert "a" in profile["numeric_stats"]
+        assert profile["numeric_stats"]["a"]["count"] == 3  # inf, -inf, nan excluded
+        assert profile["missing_values"]["a"]["count"] == 1  # nan counted as missing
+
+    def test_get_summary_stats_empty(self) -> None:
+        """Test get_summary_stats with no numeric columns."""
+        df = pd.DataFrame({
+            "name": ["Alice", "Bob"],
+            "city": ["NYC", "LA"],
+        })
+        engine = AnalysisEngine(df)
+        summary = engine.get_summary_stats()
+
+        assert summary.empty
+
+    def test_profile_with_boolean_column(self) -> None:
+        """Test profiling boolean columns."""
+        df = pd.DataFrame({
+            "flag": [True, False, True, False, True],
+            "value": [1, 2, 3, 4, 5],
+        })
+        engine = AnalysisEngine(df)
+        profile = engine.profile()
+
+        # Boolean columns are treated as numeric in pandas
+        assert "flag" in profile["numeric_stats"]
+        assert profile["numeric_stats"]["flag"]["mean"] == 0.6
+
+    def test_profile_with_datetime_column(self) -> None:
+        """Test profiling datetime columns."""
+        df = pd.DataFrame({
+            "date": pd.to_datetime(["2021-01-01", "2021-01-02", "2021-01-03"]),
+            "value": [1, 2, 3],
+        })
+        engine = AnalysisEngine(df)
+        profile = engine.profile()
+
+        # Datetime columns are treated as categorical
+        assert "date" in profile["categorical_stats"]
+        assert profile["categorical_stats"]["date"]["unique_count"] == 3
+
+    def test_profile_with_mixed_numeric_precision(self) -> None:
+        """Test profiling with mixed int and float columns."""
+        df = pd.DataFrame({
+            "int_col": pd.array([1, 2, 3], dtype="Int64"),
+            "float_col": pd.array([1.0, 2.0, 3.0], dtype="float64"),
+        })
+        engine = AnalysisEngine(df)
+        profile = engine.profile()
+
+        assert "int_col" in profile["numeric_stats"]
+        assert "float_col" in profile["numeric_stats"]
+        assert profile["numeric_stats"]["int_col"]["mean"] == 2.0
+        assert profile["numeric_stats"]["float_col"]["mean"] == 2.0
