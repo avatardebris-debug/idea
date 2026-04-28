@@ -736,22 +736,32 @@ def _advance_phase(
     slug: str,
 ) -> bool:
     """Advance to next phase if one exists. Returns True if advanced."""
-    master_plan_file = project_dir / "state" / "master_plan.md"
-    if not master_plan_file.exists():
-        return False
-
-    master_plan = master_plan_file.read_text(encoding="utf-8")
     next_phase = completed_phase + 1
 
-    # Check if next phase exists in plan
-    pattern = rf"## Phase {next_phase}[:\s]"
-    if not re.search(pattern, master_plan, re.IGNORECASE):
-        return False  # No more phases
+    # --- Primary check: master_plan.md has a ## Phase N heading ---
+    phase_found_in_plan = False
+    phase_spec = f"Phase {next_phase} of project {slug}"
+    master_plan_file = project_dir / "state" / "master_plan.md"
+    if master_plan_file.exists():
+        try:
+            master_plan = master_plan_file.read_text(encoding="utf-8")
+            pattern = rf"## Phase {next_phase}[:\s]"
+            if re.search(pattern, master_plan, re.IGNORECASE):
+                phase_found_in_plan = True
+                phase_pattern = rf"(## Phase {next_phase}[^\n]*\n)(.*?)(?=## Phase \d|$)"
+                match = re.search(phase_pattern, master_plan, re.DOTALL | re.IGNORECASE)
+                if match:
+                    phase_spec = match.group(0)
+        except Exception:
+            pass
 
-    # Extract next phase spec (simple extraction)
-    phase_pattern = rf"(## Phase {next_phase}[^\n]*\n)(.*?)(?=## Phase \d|$)"
-    match = re.search(phase_pattern, master_plan, re.DOTALL | re.IGNORECASE)
-    phase_spec = match.group(0) if match else f"Phase {next_phase} of project {slug}"
+    # --- Fallback: trust total_phases field in state ---
+    total_phases = state.get("total_phases", 0)
+    if not phase_found_in_plan and total_phases > 0 and next_phase <= total_phases:
+        phase_found_in_plan = True  # plan says more phases exist
+
+    if not phase_found_in_plan:
+        return False  # No more phases
 
     # Update state
     state["status"] = f"phase_{next_phase}_planning"
