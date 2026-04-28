@@ -150,7 +150,10 @@ class ExecutorAgent(AgentProcess):
                 # Find unchecked tasks in the current phase section only
                 scoped = self._extract_phase_tasks(raw, phase_num)
                 unchecked = re.findall(r'^- \[ \].*', scoped, re.MULTILINE)
-                if unchecked and new_files:
+                # Trigger if: new files written (fresh run) OR workspace has >= 3 files
+                # (fix run: modifies existing files, new_files may be empty)
+                has_output = bool(new_files) or len(after_files) >= 3
+                if unchecked and has_output:
                     # Mark all unchecked phase tasks as done
                     # Replace only within the phase section to avoid touching other phases
                     import re as _re
