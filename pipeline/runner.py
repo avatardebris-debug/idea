@@ -954,6 +954,8 @@ def run_pipeline(
         start_time = time.time()
         health_check_interval = 60  # seconds — agents take minutes per call
         last_health_check = time.time()
+        last_orphan_requeue = 0.0   # rate-limit orphan re-queues to once per 5 min
+        ORPHAN_REQUEUE_COOLDOWN = 300  # seconds
         _status_count = 0  # for throttling non-interactive log output
 
         while not stop_requested:
@@ -1050,12 +1052,15 @@ def run_pipeline(
                     pass
                 task_str = f" {tasks_done}/{tasks_total}✓" if tasks_total else ""
 
-                # Ollama GPU heartbeat (checks every 5 min)
+                # Ollama GPU heartbeat (checks every 5 min, cached otherwise)
                 gpu_str = ""
                 if provider == "ollama":
                     gpu_status = _check_ollama_heartbeat(model)
                     if gpu_status:
-                        gpu_str = f" {gpu_status}"
+                        if "IDLE" in gpu_status or "ERR" in gpu_status:
+                            gpu_str = f" ⚠️ {gpu_status} — model evicted from VRAM!"
+                        else:
+                            gpu_str = f" {gpu_status}"
 
                 status_line = _clean(
                     f"  [{elapsed_m:.0f}m] agents={running_agents}/{len(AGENT_ROLES)} "
@@ -1076,22 +1081,16 @@ def run_pipeline(
                         print(f"\n  ✓ All queues empty — pipeline complete.")
                         break
                 elif all_empty and from_list:
-                    # Only seed the next idea when the pipeline is truly idle —
-                    # i.e. no pending AND no in-flight (processing) messages.
-                    # all_queues_empty() only counts 'pending'; has_active_work()
-                    # counts both, preventing premature seeding.
                     if not bus.has_active_work():
-                        # Before seeding a NEW idea, re-scan project state files
-                        # for any in-progress project whose queue message was lost
-                        # (e.g. Ollama crash ate the message without nacking it).
-                        # Re-queue them first — only move to new ideas when all
-                        # existing projects are truly complete.
-                        orphaned = _rebuild_queues_from_state(bus)
-                        if orphaned:
-                            print(f"  🔁 Re-queued {orphaned} orphaned project(s) — not seeding new ideas yet")
-                        elif not seed_from_master_list(bus):
-                            print(f"\n  ✓ All ideas processed — pipeline complete.")
-                            break
+                        now = time.time()
+                        if now - last_orphan_requeue >= ORPHAN_REQUEUE_COOLDOWN:
+                            orphaned = _rebuild_queues_from_state(bus)
+                            if orphaned:
+                                last_orphan_requeue = now
+                                print(f"  🔁 Re-queued {orphaned} orphaned project(s) — not seeding new ideas yet")
+                            elif not seed_from_master_list(bus):
+                                print(f"\n  ✓ All ideas processed — pipeline complete.")
+                                break
 
                 # --- Collect per-project metrics from state files ---
                 try:
