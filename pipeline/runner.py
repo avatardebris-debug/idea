@@ -1055,8 +1055,12 @@ def run_pipeline(
                             # Scope to current phase only (some files have all phases)
                             from pipeline.agent_process import AgentProcess
                             scoped = AgentProcess._extract_phase_tasks(raw, phase_num)
-                            tasks_total = len(re.findall(r'^- \[[ x]\]', scoped, re.MULTILINE))
-                            tasks_done  = len(re.findall(r'^- \[x\]', scoped, re.MULTILINE | re.IGNORECASE))
+                            tasks_total = len(re.findall(r'^- \[[ xX]\]', scoped, re.MULTILINE))
+                            tasks_done  = len(re.findall(r'^- \[[xX]\]', scoped, re.MULTILINE))
+                            # Fallback: count numbered task lines if no checkbox format found
+                            if tasks_total == 0:
+                                numbered = re.findall(r'^\d+\.\s+\S', scoped, re.MULTILINE)
+                                tasks_total = len(numbered)
                 except Exception:
                     pass
                 task_str = f" {tasks_done}/{tasks_total}✓" if tasks_total else ""
