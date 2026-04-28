@@ -149,7 +149,7 @@ class ExecutorAgent(AgentProcess):
                 raw = tasks_full_path.read_text(encoding="utf-8")
                 # Find unchecked tasks in the current phase section only
                 scoped = self._extract_phase_tasks(raw, phase_num)
-                unchecked = re.findall(r'^- \[ \].*', scoped, re.MULTILINE)
+                unchecked = re.findall(r'^\s*- \[ \].*', scoped, re.MULTILINE)
                 # Trigger if: new files written (fresh run) OR workspace has >= 3 files
                 # (fix run: modifies existing files, new_files may be empty)
                 has_output = bool(new_files) or len(after_files) >= 3

@@ -82,8 +82,8 @@ def check_project(project_dir: pathlib.Path, do_fix: bool = False) -> dict:
     raw = tasks_file.read_text(encoding="utf-8")
     scoped, sec_start, sec_end = extract_phase_tasks(raw, phase_num)
 
-    unchecked = re.findall(r'^- \[ \]', scoped, re.MULTILINE)
-    checked = re.findall(r'^- \[x\]', scoped, re.MULTILINE | re.IGNORECASE)
+    unchecked = re.findall(r'^\s*- \[ \]', scoped, re.MULTILINE)
+    checked = re.findall(r'^\s*- \[x\]', scoped, re.MULTILINE | re.IGNORECASE)
 
     result = {
         "status": "ok" if checked else ("stuck" if py_files else "not_started"),
@@ -100,10 +100,10 @@ def check_project(project_dir: pathlib.Path, do_fix: bool = False) -> dict:
     # Fix: mark all unchecked Phase N tasks as [x] if code exists
     if do_fix and result["status"] == "stuck" and len(py_files) >= 3:
         # Only fix within the phase section
-        fixed_section = re.sub(r'^- \[ \]', '- [x]', scoped, flags=re.MULTILINE)
+        fixed_section = re.sub(r'^\s*- \[ \]', '- [x]', scoped, flags=re.MULTILINE)
         new_content = raw[:sec_start] + fixed_section + raw[sec_end:]
         tasks_file.write_text(new_content, encoding="utf-8")
-        new_checked = len(re.findall(r'^- \[x\]', fixed_section, re.MULTILINE | re.IGNORECASE))
+        new_checked = len(re.findall(r'^\s*- \[x\]', fixed_section, re.MULTILINE | re.IGNORECASE))
         result["fixed"] = True
         result["tasks_done"] = new_checked
         result["tasks_unchecked"] = 0
