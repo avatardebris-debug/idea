@@ -63,33 +63,38 @@ class PhasePlannerAgent(AgentProcess):
 
         result = self.call_agent(task=task_prompt, verbose=False)
 
-        # --- Task count guardrail ---
-        # Cap at 8 tasks per phase to prevent executor overload.
-        # The advantage_player_cardgame project generated 33 tasks for Phase 1,
-        # which caused infinite validation loops.
+        # --- Validate tasks.md was written ---
+        tasks_content = self.read_state_file(tasks_path)
+
+        # Guardrail: cap at MAX_TASKS_PER_PHASE
         MAX_TASKS_PER_PHASE = 8
+        import re as _re
         import logging
         logger = logging.getLogger(__name__)
 
-        tasks_content = self.read_state_file(tasks_path)
         if tasks_content:
             lines = tasks_content.split("\n")
             task_indices = [i for i, l in enumerate(lines) if l.strip().startswith("- [ ]")]
-
             if len(task_indices) > MAX_TASKS_PER_PHASE:
                 logger.warning(
                     "[phase_planner] Phase %d has %d tasks (limit %d) — truncating",
                     phase_num, len(task_indices), MAX_TASKS_PER_PHASE,
                 )
-                # Keep everything up to where the next excess task starts
                 cut_at = task_indices[MAX_TASKS_PER_PHASE]
-
                 truncated = "\n".join(lines[:cut_at])
                 truncated += f"\n\n<!-- {len(task_indices) - MAX_TASKS_PER_PHASE} tasks removed by guardrail (max {MAX_TASKS_PER_PHASE} per phase) -->\n"
                 self.write_state_file(tasks_path, truncated)
+                tasks_content = truncated
+        else:
+            # LLM failed to write tasks.md — generate fallback from spec
+            logger.warning("[phase_planner] LLM did not write tasks.md — generating fallback from spec")
+            fallback_tasks = self._generate_fallback_tasks(phase_num, phase_spec, master_plan)
+            self.write_state_file(tasks_path, fallback_tasks)
+            tasks_content = fallback_tasks
+            logger.info("[phase_planner] Wrote fallback tasks.md (%d chars)", len(fallback_tasks))
 
         # Write phase spec for reference
-        self.write_state_file(f"phases/phase_{phase_num}/spec.md", phase_spec)
+        self.write_state_file(f"phases/phase_{phase_num}/spec.md", phase_spec or master_plan[:2000])
 
         # Update current phase state
         self.write_json_state("state/current_phase.json", {
@@ -118,6 +123,61 @@ class PhasePlannerAgent(AgentProcess):
             tokens_used=result.tokens_used,
             steps_used=result.steps_used,
         )
+
+    def _generate_fallback_tasks(self, phase_num: int, phase_spec: str, master_plan: str) -> str:
+        """Generate a minimal tasks.md from the spec when the LLM fails to write one."""
+        import re as _re
+
+        # Pull success criteria bullets from spec
+        criteria: list[str] = []
+        spec_text = phase_spec or master_plan
+        crit_match = _re.search(r'\*\*Success Criteria\*\*[:\s]*(.*?)(?=\*\*|\Z)', spec_text, _re.DOTALL | _re.IGNORECASE)
+        if crit_match:
+            for line in crit_match.group(1).splitlines():
+                line = line.strip().lstrip("- *•").strip()
+                if line and len(line) > 10:
+                    criteria.append(line)
+
+        # Pull file list from spec
+        files: list[str] = []
+        files_match = _re.search(r'\*\*Files to Create\*\*[:\s]*(.*?)(?=\*\*|\Z)', spec_text, _re.DOTALL | _re.IGNORECASE)
+        if files_match:
+            for line in files_match.group(1).splitlines():
+                line = line.strip().lstrip("- *•`").strip().rstrip("`").strip()
+                if line and ".py" in line:
+                    files.append(line.split("—")[0].strip())
+
+        # Build task list (group files into tasks)
+        tasks = []
+        if files:
+            chunk_size = max(1, len(files) // min(6, max(1, len(files))))
+            for i in range(0, min(len(files), 6)):
+                f = files[i]
+                module = f.split("/")[-1].replace(".py", "").replace("_", " ").title()
+                crit = criteria[i] if i < len(criteria) else f"Implement and test {module}"
+                tasks.append(
+                    f"- [ ] Task {i+1}: Implement {module}\n"
+                    f"  - What: Create `{f}` as described in the phase spec\n"
+                    f"  - Files: `{f}`\n"
+                    f"  - Done when: {crit}\n"
+                )
+        elif criteria:
+            for i, crit in enumerate(criteria[:6]):
+                tasks.append(
+                    f"- [ ] Task {i+1}: {crit[:60]}\n"
+                    f"  - What: {crit}\n"
+                    f"  - Done when: {crit}\n"
+                )
+        else:
+            # Absolute fallback — 3 generic tasks
+            tasks = [
+                f"- [ ] Task 1: Implement core Phase {phase_num} functionality\n  - What: Build the primary components described in the phase spec\n  - Done when: Core functionality works and is importable\n",
+                f"- [ ] Task 2: Add tests for Phase {phase_num}\n  - What: Write unit tests covering the main code paths\n  - Done when: Tests pass with pytest\n",
+                f"- [ ] Task 3: Integration and documentation\n  - What: Integrate with existing phases and update README\n  - Done when: Full pipeline works end-to-end\n",
+            ]
+
+        return f"# Phase {phase_num} Tasks\n\n" + "\n".join(tasks)
+
 
 
 def main():
