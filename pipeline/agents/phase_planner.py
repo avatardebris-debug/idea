@@ -93,6 +93,12 @@ class PhasePlannerAgent(AgentProcess):
             tasks_content = fallback_tasks
             logger.info("[phase_planner] Wrote fallback tasks.md (%d chars)", len(fallback_tasks))
 
+        # Final validation: ensure at least one checkbox exists
+        if not _re.search(r'^- \[ \]', tasks_content, _re.MULTILINE):
+            logger.warning("[phase_planner] No checkboxes in tasks — using nuclear fallback")
+            tasks_content = self._generate_fallback_tasks(phase_num, "", "")
+            self.write_state_file(tasks_path, tasks_content)
+
         # Write phase spec for reference
         self.write_state_file(f"phases/phase_{phase_num}/spec.md", phase_spec or master_plan[:2000])
 

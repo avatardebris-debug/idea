@@ -85,6 +85,15 @@ class ReviewerAgent(AgentProcess):
         import re
         review_content = self.read_state_file(review_path)
 
+        # Guard: if LLM didn't write review.md, synthesize conservative FAIL
+        if not review_content:
+            review_content = (
+                f"# Code Review — Phase {phase_num}\n\n"
+                f"## Blocking Bugs\n- Review could not be completed (LLM did not write review file)\n\n"
+                f"## Non-Blocking Notes\nNone\n\n"
+                f"## Verdict\nFAIL — review file was not generated\n"
+            )
+            self.write_state_file(review_path, review_content)
         # Count only bullets under '## Blocking Bugs' — non-blocking notes are deferred work
         bugs_section = re.search(
             r'## Blocking Bugs.*?(?=## |$)', review_content, re.DOTALL | re.IGNORECASE

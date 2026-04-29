@@ -51,6 +51,23 @@ class IdeaPlannerAgent(AgentProcess):
 
         # Read the master plan to extract Phase 1
         master_plan = self.read_state_file("state/master_plan.md")
+        if not master_plan:
+            # LLM failed to write master_plan — generate minimal plan
+            master_plan = (
+                f"# {idea_title} — Master Plan\n\n"
+                f"## Idea Summary\n{idea_description[:500]}\n\n"
+                f"## Phase 1: Core MVP\n"
+                f"**Goal**: Build the minimum viable version of {idea_title}.\n"
+                f"**Deliverable**: Working prototype with core functionality.\n"
+                f"**Success Criteria**: Core features work and are importable.\n\n"
+                f"## Phase 2: Testing & Polish\n"
+                f"**Goal**: Add tests, error handling, and documentation.\n"
+                f"**Deliverable**: Test suite passing, README complete.\n\n"
+                f"## Phase 3: Integration & Documentation\n"
+                f"**Goal**: Final integration, CLI/API surface, and deployment docs.\n"
+                f"**Deliverable**: Production-ready package.\n"
+            )
+            self.write_state_file("state/master_plan.md", master_plan)
         phase_1_spec = self._extract_phase(master_plan, 1)
 
 

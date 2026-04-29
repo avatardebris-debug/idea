@@ -294,7 +294,7 @@ class ValidatorAgent(AgentProcess):
             "validation_report_path",
             f"phases/phase_{phase_num}/validation_report.md",
         )
-        report_full_path = self._project_path(report_path)
+        report_full_path = pathlib.Path(self._project_path(report_path))
 
         self._update_idea_status(f"phase_{phase_num}_validating", phase_num=phase_num)
 
@@ -429,6 +429,7 @@ class ValidatorAgent(AgentProcess):
             prev_failures  = retry_data.get(prev_fail_key, current_failures + 1)
             no_progress    = retry_data.get(streak_key, 0)
             retry_count    = retry_data.get(retry_key, 0) + 1
+            MAX_VALIDATOR_ATTEMPTS = 6  # absolute cap regardless of progress
             made_progress  = current_failures < prev_failures
 
             if made_progress:
@@ -449,6 +450,14 @@ class ValidatorAgent(AgentProcess):
             retry_data[prev_fail_key] = current_failures
             retry_data[streak_key]    = no_progress
             self.write_json_state("state/phase_retries.json", retry_data)
+
+            if retry_count >= MAX_VALIDATOR_ATTEMPTS:
+                # Absolute cap hit — escalate regardless of progress
+                logger.warning(
+                    "[validator] Phase %d hit absolute retry cap (%d) — force-escalating",
+                    phase_num, MAX_VALIDATOR_ATTEMPTS,
+                )
+                no_progress = NO_PROGRESS_LIMIT  # trigger escalation path
 
             if no_progress >= NO_PROGRESS_LIMIT:
                 # Truly stuck — same failures N cycles in a row, escalate

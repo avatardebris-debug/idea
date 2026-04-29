@@ -488,7 +488,14 @@ def _rebuild_queues_from_state(bus: MessageBus) -> int:
         return 0
 
     injected = 0
-    for project_dir in sorted(projects_dir.iterdir()):
+    def _project_recency(d: pathlib.Path) -> float:
+        sf = d / "state" / "current_idea.json"
+        try:
+            s = json.loads(sf.read_text(encoding="utf-8"))
+            return -datetime.fromisoformat(s.get("started_at", "2000-01-01T00:00:00+00:00")).timestamp()
+        except Exception:
+            return 0.0
+    for project_dir in sorted(projects_dir.iterdir(), key=_project_recency):
         if not project_dir.is_dir():
             continue
 
@@ -600,10 +607,18 @@ def _rebuild_queues_from_state(bus: MessageBus) -> int:
 
         # Route to the correct agent based on phase step
         if phase_step == "planning":
-            # phase_planner was building the task list
+            # phase_planner was building the task list — extract specific phase section
             master_plan_file = project_dir / "state" / "master_plan.md"
-            phase_spec = master_plan_file.read_text(encoding="utf-8")[:500] \
-                if master_plan_file.exists() else f"Resume phase {phase_num} of {title}"
+            phase_spec = f"Resume phase {phase_num} of {title}"
+            if master_plan_file.exists():
+                try:
+                    mp = master_plan_file.read_text(encoding="utf-8")
+                    m = re.search(rf"## Phase {phase_num}\b[^\n]*\n.*?(?=## Phase \d|$)",
+                                  mp, re.DOTALL | re.IGNORECASE)
+                    if m:
+                        phase_spec = m.group(0)[:3000]
+                except Exception:
+                    pass
             agent    = "phase_planner"
             payload  = {"phase": phase_num, "phase_spec": phase_spec, "idea_slug": slug}
         elif phase_step == "executing":
@@ -636,7 +651,7 @@ def _rebuild_queues_from_state(bus: MessageBus) -> int:
                     try:
                         mp_txt = mp_file.read_text(encoding="utf-8")
                         pm = re.search(
-                            rf"## Phase {phase_num}[:\s].*?(?=## Phase \d|$)",
+                            rf"## Phase {phase_num}\b.*?(?=## Phase \d|$)",
                             mp_txt, re.DOTALL | re.IGNORECASE)
                         if pm:
                             ph_spec = pm.group(0)
@@ -806,10 +821,10 @@ def _advance_phase(
     if master_plan_file.exists():
         try:
             master_plan = master_plan_file.read_text(encoding="utf-8")
-            pattern = rf"## Phase {next_phase}[:\s]"
+            pattern = rf"## Phase {next_phase}\b"
             if re.search(pattern, master_plan, re.IGNORECASE):
                 phase_found_in_plan = True
-                phase_pattern = rf"(## Phase {next_phase}[^\n]*\n)(.*?)(?=## Phase \d|$)"
+                phase_pattern = rf"(## Phase {next_phase}\b[^\n]*\n)(.*?)(?=## Phase \d|$)"
                 match = re.search(phase_pattern, master_plan, re.DOTALL | re.IGNORECASE)
                 if match:
                     phase_spec = match.group(0)
@@ -1046,7 +1061,7 @@ def run_pipeline(
         health_check_interval = 60  # seconds — agents take minutes per call
         last_health_check = time.time()
         last_orphan_requeue = 0.0   # rate-limit orphan re-queues to once per 5 min
-        ORPHAN_REQUEUE_COOLDOWN = 300  # seconds
+        ORPHAN_REQUEUE_COOLDOWN = 660  # 11 min — must exceed workspace recency guard (10 min)
         _status_count = 0  # for throttling non-interactive log output
 
         while not stop_requested:
@@ -1065,7 +1080,7 @@ def run_pipeline(
                     supervisor.save_registry()
 
                 # Compact queues periodically (every ~30 health checks ≈ 30 min)
-                if _status_count > 0 and _status_count % 30 == 0:
+                if _status_count > 0 and _status_count % 10 == 0:
                     compacted = bus.compact_all()
                     if compacted > 0:
                         print(f"  🧹 Compacted {compacted} stale messages from queues")
