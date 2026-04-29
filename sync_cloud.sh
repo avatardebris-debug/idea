@@ -111,8 +111,9 @@ echo ""
 echo "=== Pulling latest CODE only (never overwrites .pipeline state) ==="
 cd "$PROJ_ROOT"
 git fetch origin
-# Merge only — never reset. .pipeline/ is gitignored for user-generated state.
-git merge origin/main --no-edit
+# Hard reset to match remote — safe because .pipeline/ is committed from the latest zip.
+# This avoids merge conflicts when cloud has untracked files that git now knows about.
+git reset --hard origin/main
 
 echo ""
 echo "=== Current project states ==="
