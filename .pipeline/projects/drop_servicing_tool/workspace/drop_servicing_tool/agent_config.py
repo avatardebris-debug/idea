@@ -34,7 +34,7 @@ class AgentConfig:
     provider: Optional[ProviderType] = None
     model: Optional[str] = None
     mode: AgentMode = AgentMode.AUTO
-    temperature: float = 1.0
+    temperature: float = 0.7
     max_tokens: Optional[int] = None
     system_prompt_override: Optional[str] = None
     fallback_models: list = field(default_factory=list)
@@ -73,7 +73,7 @@ class AgentConfig:
             provider=ProviderType(data["provider"]),
             model=data["model"],
             mode=AgentMode(data.get("mode", "auto")),
-            temperature=data.get("temperature", 1.0),
+            temperature=data.get("temperature", 0.7),
             max_tokens=data.get("max_tokens"),
             system_prompt_override=data.get("system_prompt_override"),
             fallback_models=data.get("fallback_models", []),
@@ -95,6 +95,12 @@ class AgentConfig:
     def __contains__(self, key):
         """Support 'in' operator."""
         return hasattr(self, key)
+
+    def get(self, key, default=None):
+        """Support dict-like .get() access."""
+        if hasattr(self, key):
+            return getattr(self, key)
+        return default
 
 
 @dataclass
@@ -242,8 +248,8 @@ def get_preset(mode: str | AgentMode) -> AgentConfig:
         # Try to match to AgentMode enum
         try:
             mode = AgentMode(mode)
-        except ValueError:
-            raise ValueError(f"Unknown preset: {mode}. Choose from: fast, balanced, quality, openai, anthropic, gemini, ollama")
+        except Exception:
+            raise KeyError(f"Unknown preset: {mode}. Choose from: fast, balanced, quality, openai, anthropic, gemini, ollama, auto, step, freeform")
     
     presets = {
         AgentMode.AUTO: AgentConfig(
@@ -265,20 +271,20 @@ def get_preset(mode: str | AgentMode) -> AgentConfig:
             max_tokens=512,
         ),
         AgentMode.FAST: AgentConfig(
-            provider=ProviderType.OPENAI,
-            model="gpt-4o-mini",
+            provider=ProviderType.OLLAMA,
+            model="llama3.2:1b",
             temperature=0.3,
             max_tokens=512,
         ),
         AgentMode.BALANCED: AgentConfig(
-            provider=ProviderType.ANTHROPIC,
-            model="claude-3-5-sonnet-20241022",
+            provider=ProviderType.OPENAI,
+            model="gpt-4o-mini",
             temperature=0.5,
             max_tokens=1024,
         ),
         AgentMode.QUALITY: AgentConfig(
-            provider=ProviderType.GEMINI,
-            model="gemini-1.5-pro",
+            provider=ProviderType.ANTHROPIC,
+            model="claude-3-5-sonnet-20241022",
             temperature=0.2,
             max_tokens=2048,
         ),

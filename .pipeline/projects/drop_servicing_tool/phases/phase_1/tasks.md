@@ -1,6 +1,6 @@
 # Phase 1 Tasks: SOP Engine + Single Execution
 
-## Task 1: Create Project Skeleton
+- [ ] Task 1: Create Project Skeleton
 - **What to build**: Directory structure, package init, config, and requirements for the drop_servicing_tool package.
 - **Files to create**:
   - `drop_servicing_tool/__init__.py`
@@ -14,7 +14,7 @@
   - `import drop_servicing_tool` works without errors
   - `sops/` and `prompts/` directories exist
 
-## Task 2: SOP Schema Definition & Validation
+- [ ] Task 2: SOP Schema Definition & Validation
 - **What to build**: A Pydantic-based data model that defines the SOP schema and validates SOP YAML files on load.
 - **Files to create**:
   - `drop_servicing_tool/sop_schema.py` — Pydantic models for SOP structure:
@@ -29,7 +29,7 @@
   - `load_sop()` returns a validated SOP model ready for execution
   - `sop_schema.py` is importable and the models are well-documented
 
-## Task 3: SOP Store (Filesystem Storage)
+- [ ] Task 3: SOP Store (Filesystem Storage)
 - **What to build**: Filesystem-based CRUD operations for SOPs stored as YAML files.
 - **Files to create**:
   - `drop_servicing_tool/sop_store.py` — Functions:
@@ -46,7 +46,7 @@
   - `delete_sop()` removes the file and it no longer appears in `list_sops()`
   - All store operations respect the project config for the SOPs directory path
 
-## Task 4: Step Prompt Template System
+- [ ] Task 4: Step Prompt Template System
 - **What to build**: A prompt templating system that fills step-specific prompt templates with context from the SOP and execution state.
 - **Files to create**:
   - `prompts/default_step.md` — Default prompt template with placeholders:
@@ -65,7 +65,7 @@
   - `build_step_prompt()` produces a coherent prompt with input data, previous step output, and format instructions
   - Custom prompt templates can be specified per-step in the SOP (e.g., `prompt_template: "research_step.md"`)
 
-## Task 5: Executor Engine
+- [ ] Task 5: Executor Engine
 - **What to build**: The core engine that reads an SOP, processes each step sequentially, calls the LLM interface, and assembles the final output.
 - **Files to create**:
   - `drop_servicing_tool/executor.py` — Engine:
@@ -90,7 +90,7 @@
   - Mock mode (`--mock` flag) produces deterministic output without any LLM API calls
   - Step failures produce clear error messages with the step name and reason
 
-## Task 6: CLI Interface
+- [ ] Task 6: CLI Interface
 - **What to build**: A Typer-based CLI with `sop list`, `sop create`, and `sop run` commands.
 - **Files to create**:
   - `drop_servicing_tool/cli.py` — Typer app:
@@ -112,7 +112,7 @@
   - All CLI commands show helpful error messages for invalid inputs
   - `python -m drop_servicing_tool list` works as an alternative invocation
 
-## Task 7: Example Blog Post SOP & End-to-End Verification
+- [ ] Task 7: Example Blog Post SOP & End-to-End Verification
 - **What to build**: A fully working example SOP (blog_post) and a verification script to test the entire pipeline.
 - **Files to create**:
   - `sops/blog_post.yaml` — Example SOP:

@@ -1,22 +1,25 @@
-"""Dispatcher module for handling email actions."""
+"""Dispatcher for handling email actions (move, file, label, notify)."""
 
+import json
+import logging
 import os
 import shutil
 from datetime import datetime
-from typing import Optional, List
-from email_tool.models import Email, Rule, RuleMatch, ActionType
+from typing import Optional, List, Tuple, Dict, Any
+from email_tool.models import Email, Rule, RuleMatch, ActionType, ActionExecutionResult
 from email_tool.path_builder import PathBuilder
 from email_tool.formatter import Formatter
 
 
-class Dispatcher:
+class ActionDispatcher:
     """
-    Dispatcher for handling email actions (move, file, label).
+    Dispatcher for handling email actions (move, file, label, notify).
     
     Actions:
     - MOVE: Move email to destination directory
     - FILE: Save email to file system
     - LABEL: Apply labels/tags to email (metadata only)
+    - NOTIFY: Send notification (metadata only)
     """
     
     def __init__(
@@ -44,31 +47,39 @@ class Dispatcher:
     
     def handle_action(
         self,
-        email: Email,
-        rule_match: RuleMatch,
-        action: ActionType,
-        action_params: Optional[dict] = None
-    ) -> dict:
+        email: Optional[Email] = None,
+        rule_match: Optional[Any] = None,
+        action: Optional[ActionType] = None,
+        action_params: Optional[Dict[str, Any]] = None
+    ) -> Dict[str, Any]:
         """
         Handle a single action for an email.
         
         Args:
             email: The email to process.
-            rule_match: The matched rule information.
-            action: The action type to perform.
-            action_params: Optional parameters for the action.
+            rule_match: The rule match that triggered the action.
+            action: The action type to execute.
+            action_params: Parameters for the action.
         
         Returns:
-            Dictionary with operation results.
+            Dictionary with action execution results.
         """
         action_params = action_params or {}
         
+        if action is None:
+            return {
+                "success": False,
+                "error": "No action specified"
+            }
+        
         if action == ActionType.MOVE:
-            return self._handle_move(email, rule_match, action_params)
+            return self._handle_move_as_dict(email, action_params)
         elif action == ActionType.FILE:
-            return self._handle_file(email, rule_match, action_params)
+            return self._handle_file_as_dict(email, action_params)
         elif action == ActionType.LABEL:
-            return self._handle_label(email, rule_match, action_params)
+            return self._handle_label_as_dict(email, action_params)
+        elif action == ActionType.NOTIFY:
+            return self._handle_notify_as_dict(email, action_params)
         else:
             return {
                 "success": False,
@@ -77,178 +88,455 @@ class Dispatcher:
     
     def dispatch(
         self,
-        email: Email,
-        rule_match: RuleMatch,
-        action: ActionType,
-        action_params: Optional[dict] = None
-    ) -> dict:
+        action: Tuple[ActionType, Dict[str, Any]],
+        email: Optional[Email] = None
+    ) -> ActionExecutionResult:
         """
-        Dispatch an action for an email (alias for handle_action).
+        Dispatch an action for an email.
         
         Args:
-            email: The email to process.
-            rule_match: The matched rule information.
-            action: The action type to perform.
-            action_params: Optional parameters for the action.
+            action: Tuple of (action_type, action_params).
+            email: The email to process (optional for some actions).
         
         Returns:
-            Dictionary with operation results.
+            ActionExecutionResult with operation results.
         """
-        return self.handle_action(email, rule_match, action, action_params)
+        action_type, action_params = action
+        action_params = action_params or {}
+        
+        if action_type == ActionType.MOVE:
+            return self._handle_move(email, action_params)
+        elif action_type == ActionType.FILE:
+            return self._handle_file(email, action_params)
+        elif action_type == ActionType.LABEL:
+            return self._handle_label(email, action_params)
+        elif action_type == ActionType.NOTIFY:
+            return self._handle_notify(email, action_params)
+        else:
+            return ActionExecutionResult(
+                action_type=action_type,
+                success=False,
+                message=f"Unknown action type: {action_type}"
+            )
+    
+    def _handle_move_as_dict(
+        self,
+        email: Optional[Email],
+        action_params: dict
+    ) -> Dict[str, Any]:
+        """Handle MOVE action and return dict."""
+        # Determine destination directory
+        dest_dir = action_params.get("destination", self.base_path)
+        
+        # Build path
+        if email:
+            filename = self.path_builder.build_filename(
+                email,
+                extension="eml"
+            )
+            dest_path = os.path.join(dest_dir, filename)
+            
+            # Check for collision
+            if os.path.exists(dest_path):
+                dest_path = self._resolve_collision(dest_path)
+            
+            # Perform move
+            if self.dry_run:
+                return {
+                    "success": True,
+                    "action": "MOVE",
+                    "message": f"Would move to {dest_path}",
+                    "details": {"destination": dest_path}
+                }
+            else:
+                # Create destination directory if needed
+                os.makedirs(os.path.dirname(dest_path), exist_ok=True)
+                
+                # Move file
+                shutil.move(email.source_path, dest_path)
+                
+                return {
+                    "success": True,
+                    "action": "MOVE",
+                    "message": f"Moved to {dest_path}",
+                    "details": {"destination": dest_path}
+                }
+        else:
+            return {
+                "success": False,
+                "error": "No email provided for MOVE action"
+            }
+    
+    def _handle_file_as_dict(
+        self,
+        email: Optional[Email],
+        action_params: dict
+    ) -> Dict[str, Any]:
+        """Handle FILE action and return dict."""
+        # Determine format
+        file_format = action_params.get("format", "eml")
+        
+        # Determine destination directory
+        dest_dir = action_params.get("destination", self.base_path)
+        
+        # Build path
+        if email:
+            filename = self.path_builder.build_filename(
+                email,
+                extension=file_format
+            )
+            dest_path = os.path.join(dest_dir, filename)
+            
+            # Check for collision
+            if os.path.exists(dest_path):
+                dest_path = self._resolve_collision(dest_path)
+            
+            # Perform file operation
+            if self.dry_run:
+                return {
+                    "success": True,
+                    "action": "FILE",
+                    "message": f"Would save as {file_format} to {dest_path}",
+                    "details": {"destination": dest_path, "format": file_format}
+                }
+            else:
+                # Create destination directory if needed
+                os.makedirs(os.path.dirname(dest_path), exist_ok=True)
+                
+                # Read email content
+                if file_format == "eml":
+                    content = email.raw_content
+                elif file_format == "json":
+                    content = json.dumps(email.to_dict(), indent=2)
+                elif file_format == "md":
+                    content = self._format_email_as_markdown(email)
+                else:
+                    return {
+                        "success": False,
+                        "error": f"Unsupported format: {file_format}"
+                    }
+                
+                # Write file
+                with open(dest_path, "w", encoding="utf-8") as f:
+                    f.write(content)
+                
+                return {
+                    "success": True,
+                    "action": "FILE",
+                    "message": f"Saved as {file_format} to {dest_path}",
+                    "details": {"destination": dest_path, "format": file_format}
+                }
+        else:
+            return {
+                "success": False,
+                "error": "No email provided for FILE action"
+            }
+    
+    def _handle_label_as_dict(
+        self,
+        email: Optional[Email],
+        action_params: dict
+    ) -> Dict[str, Any]:
+        """Handle LABEL action and return dict."""
+        # Get labels to apply
+        labels = action_params.get("labels", [])
+        
+        if not labels:
+            return {
+                "success": True,
+                "action": "LABEL",
+                "message": "No labels to apply",
+                "details": {"labels": []}
+            }
+        
+        # Apply labels
+        if email:
+            # Update email labels
+            existing_labels = set(email.labels)
+            new_labels = set(labels)
+            added = new_labels - existing_labels
+            removed = existing_labels - new_labels
+            
+            if self.dry_run:
+                return {
+                    "success": True,
+                    "action": "LABEL",
+                    "message": f"Would apply labels: {labels}",
+                    "details": {
+                        "labels": labels,
+                        "added": list(added),
+                        "removed": list(removed)
+                    }
+                }
+            else:
+                # Update email labels
+                email.labels = list(new_labels)
+                
+                return {
+                    "success": True,
+                    "action": "LABEL",
+                    "message": f"Applied labels: {labels}",
+                    "details": {
+                        "labels": labels,
+                        "added": list(added),
+                        "removed": list(removed)
+                    }
+                }
+        else:
+            return {
+                "success": False,
+                "error": "No email provided for LABEL action"
+            }
+    
+    def _handle_notify_as_dict(
+        self,
+        email: Optional[Email],
+        action_params: dict
+    ) -> Dict[str, Any]:
+        """Handle NOTIFY action and return dict."""
+        # Get notification details
+        notify_type = action_params.get("type", "log")
+        message = action_params.get("message", "")
+        
+        if self.dry_run:
+            return {
+                "success": True,
+                "action": "NOTIFY",
+                "message": f"Would send {notify_type} notification",
+                "details": {"type": notify_type, "message": message}
+            }
+        else:
+            # Send notification
+            if notify_type == "log":
+                logging.info(f"Email notification: {message}")
+            elif notify_type == "print":
+                print(f"Email notification: {message}")
+            elif notify_type == "email":
+                # TODO: Implement email notification
+                logging.warning("Email notification not implemented")
+            else:
+                logging.warning(f"Unknown notification type: {notify_type}")
+            
+            return {
+                "success": True,
+                "action": "NOTIFY",
+                "message": f"Sent {notify_type} notification",
+                "details": {"type": notify_type, "message": message}
+            }
     
     def _handle_move(
         self,
-        email: Email,
-        rule_match: RuleMatch,
+        email: Optional[Email],
         action_params: dict
-    ) -> dict:
+    ) -> ActionExecutionResult:
         """Handle MOVE action."""
         # Determine destination directory
         dest_dir = action_params.get("destination", self.base_path)
         
         # Build path
-        path_builder = PathBuilder()
-        filename = path_builder.build_filename(
-            email,
-            extension="eml",
-            rule=rule_match.rule
-        )
-        
-        dest_path = os.path.join(dest_dir, filename)
-        
-        # Check for collision
-        if os.path.exists(dest_path):
-            dest_path = self._resolve_collision(dest_path)
-        
-        # Perform move
-        if self.dry_run:
-            result = {
-                "action": "MOVE",
-                "email_id": email.id,
-                "from": "source",
-                "to": dest_path,
-                "dry_run": True,
-                "success": True
-            }
+        if email:
+            filename = self.path_builder.build_filename(
+                email,
+                extension="eml"
+            )
+            dest_path = os.path.join(dest_dir, filename)
+            
+            # Check for collision
+            if os.path.exists(dest_path):
+                dest_path = self._resolve_collision(dest_path)
+            
+            # Perform move
+            if self.dry_run:
+                return ActionExecutionResult(
+                    action_type=ActionType.MOVE,
+                    success=True,
+                    message=f"Would move to {dest_path}",
+                    details={"destination": dest_path, "dry_run": True}
+                )
+            else:
+                try:
+                    # Ensure destination directory exists
+                    os.makedirs(os.path.dirname(dest_path), exist_ok=True)
+                    
+                    # Move file
+                    shutil.move(str(email.source_path), dest_path)
+                    
+                    return ActionExecutionResult(
+                        action_type=ActionType.MOVE,
+                        success=True,
+                        message=f"Moved to {dest_path}",
+                        details={"destination": dest_path, "dry_run": False}
+                    )
+                except Exception as e:
+                    return ActionExecutionResult(
+                        action_type=ActionType.MOVE,
+                        success=False,
+                        message=str(e)
+                    )
         else:
-            try:
-                # Ensure destination directory exists
-                os.makedirs(os.path.dirname(dest_path), exist_ok=True)
-                
-                # Move file
-                shutil.move(str(email.source_path), dest_path)
-                
-                result = {
-                    "action": "MOVE",
-                    "email_id": email.id,
-                    "from": str(email.source_path),
-                    "to": dest_path,
-                    "dry_run": False,
-                    "success": True
-                }
-            except Exception as e:
-                result = {
-                    "action": "MOVE",
-                    "email_id": email.id,
-                    "error": str(e),
-                    "success": False
-                }
-        
-        self.operations_log.append(result)
-        return result
+            return ActionExecutionResult(
+                action_type=ActionType.MOVE,
+                success=False,
+                message="Email required for MOVE action"
+            )
     
     def _handle_file(
         self,
-        email: Email,
-        rule_match: RuleMatch,
+        email: Optional[Email],
         action_params: dict
-    ) -> dict:
+    ) -> ActionExecutionResult:
         """Handle FILE action."""
         # Determine output format
         output_format = action_params.get("format", "eml")
+        dest_dir = action_params.get("destination", self.base_path)
         
         # Build path
-        path_builder = PathBuilder()
-        filename = path_builder.build_filename(
-            email,
-            extension=output_format,
-            rule=rule_match.rule
-        )
-        
-        dest_path = os.path.join(self.base_path, filename)
-        
-        # Check for collision
-        if os.path.exists(dest_path):
-            dest_path = self._resolve_collision(dest_path)
-        
-        # Perform file operation
-        if self.dry_run:
-            result = {
-                "action": "FILE",
-                "email_id": email.id,
-                "format": output_format,
-                "to": dest_path,
-                "dry_run": True,
-                "success": True
-            }
-        else:
-            try:
-                # Ensure destination directory exists
-                os.makedirs(os.path.dirname(dest_path), exist_ok=True)
-                
-                # Create formatter and save
-                formatter = Formatter(email)
-                
-                if output_format == "pdf":
-                    formatter.to_pdf(dest_path)
-                else:
-                    content = formatter.format(output_format)
+        if email:
+            filename = self.path_builder.build_filename(
+                email,
+                extension=output_format
+            )
+            dest_path = os.path.join(dest_dir, filename)
+            
+            # Check for collision
+            if os.path.exists(dest_path):
+                dest_path = self._resolve_collision(dest_path)
+            
+            # Perform file operation
+            if self.dry_run:
+                return ActionExecutionResult(
+                    action_type=ActionType.FILE,
+                    success=True,
+                    message=f"Would save to {dest_path}",
+                    details={"format": output_format, "destination": dest_path, "dry_run": True}
+                )
+            else:
+                try:
+                    # Ensure destination directory exists
+                    os.makedirs(os.path.dirname(dest_path), exist_ok=True)
+                    
+                    # Create content based on format
+                    if output_format == "eml":
+                        content = email.raw_content
+                    elif output_format == "json":
+                        content = json.dumps(email.to_dict(), indent=2)
+                    elif output_format == "md":
+                        content = self._format_email_as_markdown(email)
+                    else:
+                        return ActionExecutionResult(
+                            action_type=ActionType.FILE,
+                            success=False,
+                            message=f"Unsupported format: {output_format}"
+                        )
+                    
+                    # Write file
                     with open(dest_path, 'w', encoding='utf-8') as f:
                         f.write(content)
-                
-                result = {
-                    "action": "FILE",
-                    "email_id": email.id,
-                    "format": output_format,
-                    "to": dest_path,
-                    "dry_run": False,
-                    "success": True
-                }
-            except Exception as e:
-                result = {
-                    "action": "FILE",
-                    "email_id": email.id,
-                    "error": str(e),
-                    "success": False
-                }
-        
-        self.operations_log.append(result)
-        return result
+                    
+                    return ActionExecutionResult(
+                        action_type=ActionType.FILE,
+                        success=True,
+                        message=f"Saved to {dest_path}",
+                        details={"format": output_format, "destination": dest_path, "dry_run": False}
+                    )
+                except Exception as e:
+                    return ActionExecutionResult(
+                        action_type=ActionType.FILE,
+                        success=False,
+                        message=str(e)
+                    )
+        else:
+            return ActionExecutionResult(
+                action_type=ActionType.FILE,
+                success=False,
+                message="Email required for FILE action"
+            )
     
     def _handle_label(
         self,
-        email: Email,
-        rule_match: RuleMatch,
+        email: Optional[Email],
         action_params: dict
-    ) -> dict:
+    ) -> ActionExecutionResult:
         """Handle LABEL action (metadata only, no file operations)."""
-        # Get labels from rule or action params
+        # Get labels from action params
         labels = action_params.get("labels", [])
         
-        # Apply labels to email metadata (merge with rule labels)
-        all_labels = list(set(email.labels + labels + rule_match.labels))
-        email.labels = all_labels
+        # Apply labels to email metadata
+        if email:
+            all_labels = list(set(email.labels + labels))
+            email.labels = all_labels
+            
+            return ActionExecutionResult(
+                action_type=ActionType.LABEL,
+                success=True,
+                message=f"Applied labels: {labels}",
+                details={"labels": labels, "dry_run": self.dry_run}
+            )
+        else:
+            return ActionExecutionResult(
+                action_type=ActionType.LABEL,
+                success=False,
+                message="Email required for LABEL action"
+            )
+    
+    def _handle_notify(
+        self,
+        email: Optional[Email],
+        action_params: dict
+    ) -> ActionExecutionResult:
+        """Handle NOTIFY action (metadata only, no file operations)."""
+        # Get notification message
+        message = action_params.get("message", "Notification sent")
         
-        result = {
-            "action": "LABEL",
-            "email_id": email.id,
-            "labels": labels,
-            "dry_run": self.dry_run,
-            "success": True
-        }
+        return ActionExecutionResult(
+            action_type=ActionType.NOTIFY,
+            success=True,
+            message=message,
+            details={"dry_run": self.dry_run}
+        )
+    
+    def _format_email_as_markdown(self, email: Email) -> str:
+        """
+        Format email as markdown.
         
-        self.operations_log.append(result)
-        return result
+        Args:
+            email: Email to format.
+        
+        Returns:
+            Markdown formatted email.
+        """
+        lines = [
+            f"# Email: {email.subject}",
+            "",
+            f"**From:** {email.from_addr}",
+            f"**To:** {', '.join(email.to_addrs)}",
+            f"**Date:** {email.date.isoformat()}",
+            "",
+            "---",
+            "",
+            f"**Labels:** {', '.join(email.labels) if email.labels else 'None'}",
+            "",
+            "---",
+            "",
+            "## Body",
+            "",
+            email.body_plain or email.body_html or "[No content]",
+            "",
+            "---",
+            "",
+        ]
+        
+        if email.attachments:
+            lines.append("## Attachments")
+            lines.append("")
+            for attachment in email.attachments:
+                lines.append(f"- {attachment.filename} ({attachment.size} bytes)")
+            lines.append("")
+        
+        lines.append("---")
+        lines.append(f"*Processed on {datetime.now().isoformat()}*")
+        
+        return "\n".join(lines)
     
     def _resolve_collision(self, existing_path: str) -> str:
         """
@@ -286,28 +574,24 @@ class Dispatcher:
     def handle_multiple_actions(
         self,
         email: Email,
-        rule_match: RuleMatch,
-        actions: List[tuple]
-    ) -> List[dict]:
+        actions: List[Tuple[ActionType, Dict[str, Any]]]
+    ) -> List[ActionExecutionResult]:
         """
         Handle multiple actions for an email.
         
         Args:
             email: The email to process.
-            rule_match: The matched rule information.
             actions: List of (action_type, action_params) tuples.
         
         Returns:
-            List of operation results.
+            List of ActionExecutionResult objects.
         """
         results = []
         
         for action_type, action_params in actions:
-            result = self.handle_action(
-                email=email,
-                rule_match=rule_match,
-                action=action_type,
-                action_params=action_params
+            result = self.dispatch(
+                action=(action_type, action_params),
+                email=email
             )
             results.append(result)
         
@@ -357,6 +641,96 @@ class Dispatcher:
             summary["by_email"][email_id] = summary["by_email"].get(email_id, 0) + 1
         
         return summary
+
+
+class ActionExecutor:
+    """
+    Executor for running actions with retry logic.
+    
+    Handles:
+    - Executing actions through the dispatcher
+    - Retry logic for failed actions
+    - Error handling and reporting
+    """
+    
+    def __init__(
+        self,
+        dispatcher: ActionDispatcher,
+        max_retries: int = 3,
+        retry_delay: float = 1.0
+    ):
+        """
+        Initialize the action executor.
+        
+        Args:
+            dispatcher: The dispatcher to use for executing actions.
+            max_retries: Maximum number of retry attempts.
+            retry_delay: Delay between retries in seconds.
+        """
+        self.dispatcher = dispatcher
+        self.max_retries = max_retries
+        self.retry_delay = retry_delay
+    
+    def execute(
+        self,
+        email: Any,
+        rule_match: Any,
+        actions: List[Tuple[ActionType, Dict[str, Any]]]
+    ) -> List[Dict[str, Any]]:
+        """
+        Execute actions with retry logic.
+        
+        Args:
+            email: The email to process.
+            rule_match: The rule match that triggered the actions.
+            actions: List of (action_type, action_params) tuples.
+        
+        Returns:
+            List of action execution results.
+        """
+        import time
+        
+        results = []
+        
+        for action_type, action_params in actions:
+            attempt = 0
+            last_error = None
+            
+            while attempt <= self.max_retries:
+                try:
+                    result = self.dispatcher.handle_action(
+                        email=email,
+                        rule_match=rule_match,
+                        action=action_type,
+                        action_params=action_params
+                    )
+                    
+                    if result.get("success"):
+                        results.append(result)
+                        break
+                    else:
+                        last_error = result.get("error", "Unknown error")
+                        attempt += 1
+                        
+                        if attempt <= self.max_retries:
+                            time.sleep(self.retry_delay)
+                
+                except Exception as e:
+                    last_error = str(e)
+                    attempt += 1
+                    
+                    if attempt <= self.max_retries:
+                        time.sleep(self.retry_delay)
+            
+            if attempt > self.max_retries:
+                results.append({
+                    "success": False,
+                    "action": action_type.value if hasattr(action_type, 'value') else str(action_type),
+                    "error": f"Failed after {self.max_retries} retries: {last_error}",
+                    "attempts": attempt
+                })
+        
+        return results
 
 
 class ActionBuilder:
@@ -422,6 +796,24 @@ class ActionBuilder:
         self.actions.append((ActionType.LABEL, {"labels": labels, "priority": priority}))
         return self
     
+    def add_notify(
+        self,
+        message: str = "Notification sent",
+        priority: int = 4
+    ) -> 'ActionBuilder':
+        """
+        Add a NOTIFY action.
+        
+        Args:
+            message: Notification message.
+            priority: Action priority.
+        
+        Returns:
+            Self for chaining.
+        """
+        self.actions.append((ActionType.NOTIFY, {"message": message, "priority": priority}))
+        return self
+    
     def build(self) -> List[tuple]:
         """
         Build the action list.
@@ -438,86 +830,4 @@ class ActionBuilder:
 
 
 # Alias for backward compatibility
-ActionDispatcher = Dispatcher
-
-
-class ActionExecutor:
-    """
-    Executes actions with error handling and retry logic.
-    """
-    
-    def __init__(
-        self,
-        dispatcher: Dispatcher,
-        max_retries: int = 3,
-        retry_delay: float = 1.0
-    ):
-        """
-        Initialize the action executor.
-        
-        Args:
-            dispatcher: The dispatcher to use.
-            max_retries: Maximum number of retry attempts.
-            retry_delay: Delay between retries in seconds.
-        """
-        self.dispatcher = dispatcher
-        self.max_retries = max_retries
-        self.retry_delay = retry_delay
-    
-    def execute(
-        self,
-        email: Email,
-        rule_match: RuleMatch,
-        actions: List[tuple]
-    ) -> List[dict]:
-        """
-        Execute actions with retry logic.
-        
-        Args:
-            email: The email to process.
-            rule_match: The matched rule information.
-            actions: List of (action_type, action_params) tuples.
-        
-        Returns:
-            List of operation results.
-        """
-        import time
-        
-        results = []
-        
-        for action_type, action_params in actions:
-            attempt = 0
-            last_error = None
-            
-            while attempt < self.max_retries:
-                try:
-                    result = self.dispatcher.handle_action(
-                        email=email,
-                        rule_match=rule_match,
-                        action=action_type,
-                        action_params=action_params
-                    )
-                    
-                    if result.get("success"):
-                        results.append(result)
-                        break
-                    else:
-                        last_error = result.get("error")
-                        attempt += 1
-                        
-                except Exception as e:
-                    last_error = str(e)
-                    attempt += 1
-                
-                if attempt < self.max_retries:
-                    time.sleep(self.retry_delay)
-            
-            if attempt >= self.max_retries:
-                results.append({
-                    "action": action_type.value,
-                    "email_id": email.id,
-                    "error": f"Failed after {self.max_retries} attempts: {last_error}",
-                    "success": False
-                })
-        
-        return results
+Dispatcher = ActionDispatcher

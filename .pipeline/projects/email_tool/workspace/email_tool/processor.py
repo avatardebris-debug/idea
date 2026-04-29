@@ -1,12 +1,91 @@
-"""Processor module for the main email processing pipeline."""
+"""Processor module for the email processing pipeline."""
 
 import os
+import logging
 from datetime import datetime
-from typing import List, Optional
-from email_tool.models import Email, Rule, RuleMatch, ActionType
-from email_tool.parser import EmailParser
-from email_tool.matcher import RuleMatcher
-from email_tool.dispatcher import Dispatcher, ActionBuilder, ActionExecutor
+from pathlib import Path
+from typing import List, Optional, Any
+from email_tool.models import Rule, RuleMatch, ActionType
+
+
+logger = logging.getLogger(__name__)
+
+
+class EmailMessage:
+    """
+    Represents an email message with metadata and content.
+    
+    Attributes:
+        subject: Email subject line.
+        from_addr: Sender's email address.
+        to_addr: Recipient's email address.
+        body: Email body content.
+        timestamp: Unix timestamp of when email was received.
+        attachments: List of attachment filenames.
+    """
+    
+    def __init__(
+        self,
+        subject: str,
+        from_addr: str,
+        to_addr: str,
+        body: str,
+        timestamp: int,
+        attachments: Optional[List[str]] = None
+    ):
+        """
+        Initialize an EmailMessage.
+        
+        Args:
+            subject: Email subject.
+            from_addr: Sender email address.
+            to_addr: Recipient email address.
+            body: Email body content.
+            timestamp: Unix timestamp.
+            attachments: Optional list of attachment filenames.
+        """
+        self.subject = subject
+        self.from_addr = from_addr
+        self.to_addr = to_addr
+        self.body = body
+        self.timestamp = timestamp
+        self.attachments = attachments or []
+    
+    def to_dict(self) -> dict:
+        """
+        Convert email message to dictionary.
+        
+        Returns:
+            Dictionary representation of the email.
+        """
+        return {
+            'subject': self.subject,
+            'from_addr': self.from_addr,
+            'to_addr': self.to_addr,
+            'body': self.body,
+            'timestamp': self.timestamp,
+            'attachments': self.attachments
+        }
+    
+    @classmethod
+    def from_dict(cls, data: dict) -> 'EmailMessage':
+        """
+        Create EmailMessage from dictionary.
+        
+        Args:
+            data: Dictionary with email data.
+        
+        Returns:
+            EmailMessage instance.
+        """
+        return cls(
+            subject=data['subject'],
+            from_addr=data['from_addr'],
+            to_addr=data['to_addr'],
+            body=data['body'],
+            timestamp=data['timestamp'],
+            attachments=data.get('attachments', [])
+        )
 
 
 class EmailProcessor:
@@ -14,186 +93,110 @@ class EmailProcessor:
     Main processor for email processing pipeline.
     
     Pipeline stages:
-    1. Parse email from source
-    2. Match against rules
-    3. Dispatch actions based on matches
+    1. Receive email message
+    2. Apply rules to categorize email
+    3. Save email to file system
+    4. Track processing statistics
     """
     
     def __init__(
         self,
         base_path: str = "./archive",
-        dry_run: bool = False,
-        collision_strategy: str = "rename",
-        max_retries: int = 3,
-        retry_delay: float = 1.0
+        rules: Optional[List[Any]] = None,
+        config: Optional[Any] = None
     ):
         """
         Initialize the email processor.
         
         Args:
-            base_path: Base directory for all operations.
-            dry_run: If True, only simulate actions without making changes.
-            collision_strategy: Strategy for handling filename collisions.
-            max_retries: Maximum retry attempts for actions.
-            retry_delay: Delay between retries in seconds.
+            base_path: Base directory for saving emails.
+            rules: Optional list of rules to apply.
+            config: Optional configuration object.
         """
-        self.base_path = base_path
-        self.dry_run = dry_run
-        self.collision_strategy = collision_strategy
-        self.max_retries = max_retries
-        self.retry_delay = retry_delay
-        
-        # Initialize components
-        self.parser = EmailParser()
-        self.matcher = RuleMatcher()
-        self.dispatcher = Dispatcher(
-            base_path=self.base_path,
-            dry_run=dry_run,
-            collision_strategy=collision_strategy
-        )
-        self.executor = ActionExecutor(
-            dispatcher=self.dispatcher,
-            max_retries=max_retries,
-            retry_delay=retry_delay
-        )
-        
-        # Processing statistics
-        self.stats = {
-            "total_processed": 0,
-            "total_matched": 0,
-            "total_failed": 0,
-            "by_rule": {},
-            "by_action": {}
-        }
-        
-        # Store rules and actions for monitoring
-        self.rules: List[Rule] = []
-        self.actions: List[tuple] = []
+        self.base_path = Path(base_path)
+        self.rules = rules
+        self.config = config
+        self.stats = {'processed': 0, 'errors': 0}
     
-    def process_email(
-        self,
-        email_source: str,
-        rules: List[Rule],
-        actions: List[tuple]
-    ) -> dict:
+    def process_email(self, email_message: EmailMessage) -> bool:
         """
-        Process a single email through the pipeline.
+        Process a single email message.
         
         Args:
-            email_source: Path to email file or email content.
-            rules: List of rules to match against.
-            actions: List of (action_type, action_params) tuples.
+            email_message: The email message to process.
         
         Returns:
-            Dictionary with processing results.
+            True if processing succeeded, False otherwise.
         """
-        result = {
-            "success": False,
-            "email_id": None,
-            "matches": [],
-            "actions_performed": [],
-            "errors": []
-        }
-        
         try:
-            # Stage 1: Parse email
-            email = self.parser.parse(email_source)
-            result["email_id"] = email.id
+            # Apply rules to categorize email
+            self._apply_rules(email_message)
             
-            # Stage 2: Match against rules
-            rule_matches = self.matcher.match(email, rules)
-            result["matches"] = [
-                {
-                    "rule_name": m.rule_name,
-                    "match_type": m.match_type,
-                    "priority": m.priority
-                }
-                for m in rule_matches
-            ]
+            # Save email to file system
+            self._save_email(email_message)
             
             # Update statistics
-            self.stats["total_processed"] += 1
-            if rule_matches:
-                self.stats["total_matched"] += 1
-                for match in rule_matches:
-                    rule_name = match.rule_name
-                    self.stats["by_rule"][rule_name] = \
-                        self.stats["by_rule"].get(rule_name, 0) + 1
+            self.stats['processed'] += 1
             
-            # Stage 3: Dispatch actions for each match
-            for rule_match in rule_matches:
-                action_results = self.executor.execute(
-                    email=email,
-                    rule_match=rule_match,
-                    actions=actions
-                )
-                result["actions_performed"].extend(action_results)
-                
-                # Update action statistics
-                for action_result in action_results:
-                    action_type = action_result.get("action", "UNKNOWN")
-                    self.stats["by_action"][action_type] = \
-                        self.stats["by_action"].get(action_type, 0) + 1
-            
-            # Mark as successful if at least one action was performed
-            if result["actions_performed"]:
-                result["success"] = True
+            return True
             
         except Exception as e:
-            result["errors"].append(str(e))
-            self.stats["total_failed"] += 1
-        
-        return result
+            logger.error(f"Error processing email: {e}")
+            self.stats['errors'] += 1
+            return False
     
-    def process_batch(
-        self,
-        email_sources: List[str],
-        rules: List[Rule],
-        actions: List[tuple]
-    ) -> List[dict]:
+    def _save_email(self, email_message: EmailMessage) -> bool:
         """
-        Process multiple emails through the pipeline.
+        Save email message to file system.
         
         Args:
-            email_sources: List of email file paths or content.
-            rules: List of rules to match against.
-            actions: List of (action_type, action_params) tuples.
+            email_message: The email message to save.
         
         Returns:
-            List of processing results.
+            True if save succeeded, False otherwise.
         """
-        results = []
-        
-        for source in email_sources:
-            result = self.process_email(source, rules, actions)
-            results.append(result)
-        
-        return results
+        try:
+            # Create sender directory
+            sender_dir = self.base_path / email_message.from_addr
+            sender_dir.mkdir(parents=True, exist_ok=True)
+            
+            # Build filename
+            filename = f"{email_message.timestamp}_{email_message.subject.replace(' ', '_')}.eml"
+            file_path = sender_dir / filename
+            
+            # Write email content
+            with open(file_path, 'w', encoding='utf-8') as f:
+                f.write(f"Subject: {email_message.subject}\n")
+                f.write(f"From: {email_message.from_addr}\n")
+                f.write(f"To: {email_message.to_addr}\n")
+                f.write(f"Timestamp: {email_message.timestamp}\n")
+                f.write(f"Attachments: {', '.join(email_message.attachments)}\n")
+                f.write(f"\nBody:\n{email_message.body}\n")
+            
+            return True
+            
+        except Exception as e:
+            logger.error(f"Error saving email: {e}")
+            return False
     
-    def process_directory(
-        self,
-        source_dir: str,
-        rules: List[Rule],
-        actions: List[tuple],
-        file_pattern: str = "*.eml"
-    ) -> List[dict]:
+    def _apply_rules(self, email_message: EmailMessage) -> Optional[str]:
         """
-        Process all emails in a directory.
+        Apply rules to email message.
         
         Args:
-            source_dir: Directory containing email files.
-            rules: List of rules to match against.
-            actions: List of (action_type, action_params) tuples.
-            file_pattern: File pattern to match (e.g., "*.eml").
+            email_message: The email message to apply rules to.
         
         Returns:
-            List of processing results.
+            Category string if rules matched, None otherwise.
         """
-        import glob
+        if not self.rules:
+            return None
         
-        email_files = glob.glob(os.path.join(source_dir, file_pattern))
+        for rule in self.rules:
+            if hasattr(rule, 'matches') and rule.matches(email_message):
+                return rule.category
         
-        return self.process_batch(email_files, rules, actions)
+        return None
     
     def get_stats(self) -> dict:
         """
@@ -203,29 +206,6 @@ class EmailProcessor:
             Dictionary with processing statistics.
         """
         return self.stats.copy()
-    
-    def reset_stats(self):
-        """Reset processing statistics."""
-        self.stats = {
-            "total_processed": 0,
-            "total_matched": 0,
-            "total_failed": 0,
-            "by_rule": {},
-            "by_action": {}
-        }
-    
-    def get_dispatcher_log(self) -> List[dict]:
-        """
-        Get the dispatcher operation log.
-        
-        Returns:
-            List of operation results.
-        """
-        return self.dispatcher.get_operations_log()
-    
-    def clear_dispatcher_log(self):
-        """Clear the dispatcher operation log."""
-        self.dispatcher.clear_operations_log()
 
 
 class PipelineBuilder:
@@ -284,17 +264,13 @@ class PipelineBuilder:
         self.rules.extend(rules)
         return self
     
-    def add_action(
-        self,
-        action_type: ActionType,
-        action_params: dict
-    ) -> 'PipelineBuilder':
+    def add_action(self, action_type, action_params: dict) -> 'PipelineBuilder':
         """
         Add an action to the pipeline.
         
         Args:
-            action_type: The type of action to perform.
-            action_params: Parameters for the action.
+            action_type: The type of action (ActionType enum).
+            action_params: Dictionary of action parameters.
         
         Returns:
             Self for chaining.
@@ -390,98 +366,96 @@ class PipelineExecutor:
             source_dir: Directory containing email files.
             rules: List of rules to match against.
             actions: List of actions to perform.
-            file_pattern: File pattern to match.
+            file_pattern: Glob pattern for matching files.
         
         Returns:
             List of processing results.
         """
-        import glob
+        from pathlib import Path
+        source_path = Path(source_dir)
+        email_files = list(source_path.glob(file_pattern))
         
-        email_files = glob.glob(os.path.join(source_dir, file_pattern))
-        
-        return self.execute(email_files, rules, actions)
+        return self.execute(
+            [str(f) for f in email_files],
+            rules,
+            actions
+        )
 
 
 class PipelineMonitor:
     """
-    Monitors and reports on pipeline execution.
+    Monitors pipeline execution and provides progress information.
     """
     
-    def __init__(self, processor: EmailProcessor):
+    def __init__(self):
+        """Initialize the pipeline monitor."""
+        self.start_time = None
+        self.end_time = None
+        self.total_emails = 0
+        self.processed_emails = 0
+        self.failed_emails = 0
+        self.matched_emails = 0
+        self.errors: List[str] = []
+    
+    def start(self, total_emails: int):
         """
-        Initialize the pipeline monitor.
+        Start monitoring.
         
         Args:
-            processor: The email processor to monitor.
+            total_emails: Total number of emails to process.
         """
-        self.processor = processor
-        self.stats = {}
+        self.start_time = datetime.now()
+        self.total_emails = total_emails
+        self.processed_emails = 0
+        self.failed_emails = 0
+        self.matched_emails = 0
+        self.errors = []
     
-    def update_stats(self):
-        """Update statistics from the processor."""
-        self.stats = self.processor.get_stats()
-    
-    def get_status(self) -> dict:
+    def record_success(self, matched: bool):
         """
-        Get current pipeline status.
+        Record a successful processing.
+        
+        Args:
+            matched: Whether the email matched any rules.
+        """
+        self.processed_emails += 1
+        if matched:
+            self.matched_emails += 1
+    
+    def record_failure(self, error: str):
+        """
+        Record a failed processing.
+        
+        Args:
+            error: Error message.
+        """
+        self.failed_emails += 1
+        self.errors.append(error)
+    
+    def stop(self):
+        """Stop monitoring."""
+        self.end_time = datetime.now()
+    
+    def get_progress(self) -> dict:
+        """
+        Get current progress information.
         
         Returns:
-            Dictionary with status information.
+            Dictionary with progress information.
         """
-        self.update_stats()
+        elapsed = (self.end_time - self.start_time).total_seconds() if self.end_time else 0
         
         return {
-            "total_processed": self.stats["total_processed"],
-            "total_matched": self.stats["total_matched"],
-            "total_failed": self.stats["total_failed"],
-            "success_rate": self._calculate_success_rate(self.stats),
-            "by_rule": self.stats["by_rule"],
-            "by_action": self.stats["by_action"],
-            "last_updated": datetime.now().isoformat()
+            'total_emails': self.total_emails,
+            'processed_emails': self.processed_emails,
+            'failed_emails': self.failed_emails,
+            'matched_emails': self.matched_emails,
+            'elapsed_seconds': elapsed,
+            'success_rate': (
+                (self.processed_emails / self.total_emails * 100)
+                if self.total_emails > 0 else 0
+            )
         }
-    
-    def _calculate_success_rate(self, stats: dict) -> float:
-        """Calculate success rate from statistics."""
-        total = stats["total_processed"]
-        if total == 0:
-            return 0.0
-        return (stats["total_matched"] / total) * 100
-    
-    def get_rule_performance(self) -> dict:
-        """
-        Get performance metrics for each rule.
-        
-        Returns:
-            Dictionary with rule performance metrics.
-        """
-        self.update_stats()
-        
-        performance = {}
-        for rule_name, count in self.stats["by_rule"].items():
-            performance[rule_name] = {
-                "matches": count,
-                "percentage": (count / max(self.stats["total_matched"], 1)) * 100
-            }
-        
-        return performance
-    
-    def get_action_performance(self) -> dict:
-        """
-        Get performance metrics for each action type.
-        
-        Returns:
-            Dictionary with action performance metrics.
-        """
-        self.update_stats()
-        
-        performance = {}
-        for action_type, count in self.stats["by_action"].items():
-            performance[action_type] = {
-                "count": count,
-                "percentage": (count / max(self.stats["total_matched"], 1)) * 100
-            }
-        
-        return performance
 
 
 class PipelineConfig:
@@ -501,11 +475,11 @@ class PipelineConfig:
         Initialize pipeline configuration.
         
         Args:
-            base_path: Base directory for operations.
-            dry_run: Enable dry run mode.
-            collision_strategy: Strategy for filename collisions.
-            max_retries: Maximum retry attempts.
-            retry_delay: Delay between retries.
+            base_path: Base directory for saving emails.
+            dry_run: If True, don't actually save emails.
+            collision_strategy: How to handle filename collisions.
+            max_retries: Maximum number of retry attempts.
+            retry_delay: Delay between retries in seconds.
         """
         self.base_path = base_path
         self.dry_run = dry_run
@@ -513,51 +487,36 @@ class PipelineConfig:
         self.max_retries = max_retries
         self.retry_delay = retry_delay
     
-    def to_processor(self) -> EmailProcessor:
-        """
-        Convert configuration to EmailProcessor instance.
-        
-        Returns:
-            Configured EmailProcessor.
-        """
-        return EmailProcessor(
-            base_path=self.base_path,
-            dry_run=self.dry_run,
-            collision_strategy=self.collision_strategy,
-            max_retries=self.max_retries,
-            retry_delay=self.retry_delay
-        )
-    
-    @classmethod
-    def from_dict(cls, config_dict: dict) -> 'PipelineConfig':
-        """
-        Create configuration from dictionary.
-        
-        Args:
-            config_dict: Dictionary with configuration values.
-        
-        Returns:
-            PipelineConfig instance.
-        """
-        return cls(
-            base_path=config_dict.get("base_path", "./archive"),
-            dry_run=config_dict.get("dry_run", False),
-            collision_strategy=config_dict.get("collision_strategy", "rename"),
-            max_retries=config_dict.get("max_retries", 3),
-            retry_delay=config_dict.get("retry_delay", 1.0)
-        )
-    
     def to_dict(self) -> dict:
         """
         Convert configuration to dictionary.
         
         Returns:
-            Dictionary with configuration values.
+            Dictionary representation of the configuration.
         """
         return {
-            "base_path": self.base_path,
-            "dry_run": self.dry_run,
-            "collision_strategy": self.collision_strategy,
-            "max_retries": self.max_retries,
-            "retry_delay": self.retry_delay
+            'base_path': self.base_path,
+            'dry_run': self.dry_run,
+            'collision_strategy': self.collision_strategy,
+            'max_retries': self.max_retries,
+            'retry_delay': self.retry_delay
         }
+    
+    @classmethod
+    def from_dict(cls, data: dict) -> 'PipelineConfig':
+        """
+        Create configuration from dictionary.
+        
+        Args:
+            data: Dictionary with configuration data.
+        
+        Returns:
+            PipelineConfig instance.
+        """
+        return cls(
+            base_path=data.get('base_path', './archive'),
+            dry_run=data.get('dry_run', False),
+            collision_strategy=data.get('collision_strategy', 'rename'),
+            max_retries=data.get('max_retries', 3),
+            retry_delay=data.get('retry_delay', 1.0)
+        )

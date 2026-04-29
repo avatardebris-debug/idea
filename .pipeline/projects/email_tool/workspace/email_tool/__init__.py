@@ -1,49 +1,67 @@
-"""Email Tool - A rule-based email filtering and organization system."""
+"""
+Email Tool - Email processing and management system.
 
-from email_tool.models import Email, Rule, Category, RuleMatch
-from email_tool.parser import parse_email_file, parse_email_content
-from email_tool.rules import RuleEngine, RuleType, RuleMatchStrategy
-from email_tool.config import (
-    load_rules_from_yaml,
-    load_rules_from_dict,
-    validate_rule_config,
-    validate_rule_config_file,
-    ConfigValidationError,
+This package provides tools for parsing, matching, and processing email messages
+according to configurable rules and actions.
+"""
+
+from email_tool.models import (
+    Rule,
+    RuleType,
+    Action,
+    ActionType,
+    Email,
+    RuleMatch,
+    RuleMatchType,
+    ActionExecutionResult,
+    EmailMatch,
+    EmailProcessingResult,
+    EmailMetadata,
+    ProcessingStats,
+    RuleSet,
+    ActionSet,
+    AttachmentProcessingResult,
+    ProcessingConfig,
+    RuleMatchStrategy,
+    Category,
+    EmailAttachmentProcessingResult,
 )
-from email_tool.organizer import EmailOrganizer, OrganizerBuilder, create_organizer
-from email_tool.path_builder import PathBuilder
-from email_tool.formatter import Formatter
+from email_tool.parser import EmailParser
+from email_tool.matcher import RuleMatcher
 from email_tool.dispatcher import Dispatcher, ActionBuilder, ActionExecutor
-from email_tool.processor import EmailProcessor, PipelineBuilder, PipelineExecutor, PipelineMonitor, PipelineConfig
+from email_tool.processor import (
+    EmailProcessor,
+    PipelineBuilder,
+    PipelineExecutor,
+    PipelineMonitor,
+    PipelineConfig,
+)
 
+__version__ = "1.0.0"
 __all__ = [
     # Models
-    "Email",
     "Rule",
-    "Category",
-    "RuleMatch",
-    # Parser
-    "parse_email_file",
-    "parse_email_content",
-    # Rules
-    "RuleEngine",
     "RuleType",
+    "Action",
+    "ActionType",
+    "Email",
+    "RuleMatch",
+    "RuleMatchType",
+    "ActionExecutionResult",
+    "EmailMatch",
+    "EmailProcessingResult",
+    "EmailMetadata",
+    "ProcessingStats",
+    "RuleSet",
+    "ActionSet",
+    "AttachmentProcessingResult",
+    "ProcessingConfig",
     "RuleMatchStrategy",
-    # Config
-    "load_rules_from_yaml",
-    "load_rules_from_dict",
-    "validate_rule_config",
-    "validate_rule_config_file",
-    "ConfigValidationError",
-    # Organizer
-    "EmailOrganizer",
-    "OrganizerBuilder",
-    "create_organizer",
-    # Path Builder
-    "PathBuilder",
-    # Formatter
-    "Formatter",
-    # Dispatcher
+    "Category",
+    "EmailAttachmentProcessingResult",
+    # Components
+    "EmailParser",
+    "RuleMatcher",
     "Dispatcher",
     "ActionBuilder",
     "ActionExecutor",
@@ -54,5 +72,3 @@ __all__ = [
     "PipelineMonitor",
     "PipelineConfig",
 ]
-
-__version__ = "0.1.0"

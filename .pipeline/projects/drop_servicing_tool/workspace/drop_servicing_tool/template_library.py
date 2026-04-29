@@ -24,6 +24,29 @@ class TemplateLibrary:
         self._store: Dict[str, str] = {}
         # Category mapping (name -> category)
         self._categories: Dict[str, str] = {}
+        # Load existing templates from disk
+        self._load_existing_templates()
+
+    # ---- Initialization ----
+
+    def _load_existing_templates(self) -> None:
+        """Load existing templates from disk."""
+        if not self._templates_dir.exists():
+            return
+        
+        for md_file in self._templates_dir.rglob("*.md"):
+            try:
+                name = md_file.stem
+                content = md_file.read_text(encoding="utf-8")
+                self._store[name] = content
+                # Determine category from path
+                rel_path = md_file.relative_to(self._templates_dir)
+                if len(rel_path.parts) > 1:
+                    self._categories[name] = rel_path.parts[0]
+                else:
+                    self._categories[name] = "default"
+            except (IOError, OSError):
+                continue
 
     # ---- Registration ----
 
@@ -34,6 +57,8 @@ class TemplateLibrary:
         category: Optional[str] = None,
     ) -> None:
         """Register a template by name."""
+        if not name:
+            raise ValueError("Template name cannot be empty")
         self._store[name] = content
         if category:
             self._categories[name] = category
@@ -64,6 +89,10 @@ class TemplateLibrary:
         raise FileNotFoundError(f"Template '{name}' not found.")
 
     # ---- Listing ----
+
+    def get_template_categories(self) -> List[str]:
+        """Get all unique template categories."""
+        return sorted(set(self._categories.values()))
 
     def list_templates(self, category: Optional[str] = None) -> List[str]:
         """List template names, optionally filtered by *category*."""

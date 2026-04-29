@@ -1,14 +1,22 @@
-"""Configuration loader for loading rules from YAML files."""
+"""Configuration loader for Email Tool.
 
+This module provides configuration loading from YAML files and environment variables.
+"""
+
+import os
 import re
 import yaml
 from pathlib import Path
-from typing import List, Optional, Dict, Any
+from typing import Dict, Any, Optional, List
+from email_tool.logging_config import setup_logging, get_logger
 from email_tool.models import Rule, RuleType
+
+logger = get_logger(__name__)
 
 
 class ConfigValidationError(Exception):
     """Exception raised when configuration validation fails."""
+    
     def __init__(self, message: str, file: Optional[str] = None, line: Optional[int] = None):
         super().__init__(message)
         self.file = file
@@ -24,244 +32,401 @@ class ConfigValidationError(Exception):
         return " | ".join(parts)
 
 
-def validate_rule_config(rule_data: Dict[str, Any], rule_name: str) -> List[str]:
+class EmailToolConfig:
+    """Main configuration class for Email Tool.
+    
+    Loads configuration from YAML file and environment variables.
+    Provides a unified interface for all configuration values.
     """
-    Validate a single rule configuration.
+    
+    DEFAULT_CONFIG_DIR = Path.home() / ".email_tool"
+    DEFAULT_CONFIG_FILE = DEFAULT_CONFIG_DIR / "config.yaml"
+    
+    def __init__(self, config_path: Optional[Path] = None):
+        """Initialize configuration.
+        
+        Args:
+            config_path: Path to configuration file. If None, uses default location.
+        """
+        self.config_path = config_path or self.DEFAULT_CONFIG_FILE
+        self.config: Dict[str, Any] = {}
+        self._load_config()
+    
+    def _load_config(self):
+        """Load configuration from YAML file and merge with environment variables."""
+        # Load from YAML file
+        if self.config_path.exists():
+            try:
+                with open(self.config_path, 'r', encoding='utf-8') as f:
+                    file_config = yaml.safe_load(f) or {}
+                logger.debug(f"Loaded config from {self.config_path}")
+            except yaml.YAMLError as e:
+                logger.warning(f"Failed to parse YAML config: {e}")
+                file_config = {}
+            except Exception as e:
+                logger.warning(f"Failed to load config from {self.config_path}: {e}")
+                file_config = {}
+        else:
+            logger.debug(f"Config file not found: {self.config_path}")
+            file_config = {}
+        
+        # Load from environment variables
+        env_config = self._load_from_env()
+        
+        # Merge configurations (file takes precedence over env)
+        self.config = self._merge_configs(env_config, file_config)
+        
+        # Apply defaults
+        self._apply_defaults()
+    
+    def _load_from_env(self) -> Dict[str, Any]:
+        """Load configuration from environment variables."""
+        env_config: Dict[str, Any] = {}
+        
+        # Log level
+        log_level = os.getenv('EMAIL_TOOL_LOG_LEVEL')
+        if log_level:
+            env_config['log_level'] = log_level
+        
+        # Log file
+        log_file = os.getenv('EMAIL_TOOL_LOG_FILE')
+        if log_file:
+            env_config['log_file'] = log_file
+        
+        # Base path
+        base_path = os.getenv('EMAIL_TOOL_BASE_PATH')
+        if base_path:
+            env_config['base_path'] = base_path
+        
+        # Output format
+        output_format = os.getenv('EMAIL_TOOL_OUTPUT_FORMAT')
+        if output_format:
+            env_config['output_format'] = output_format
+        
+        # Dashboard settings
+        dashboard_enabled = os.getenv('EMAIL_TOOL_DASHBOARD_ENABLED')
+        if dashboard_enabled:
+            if 'dashboard' not in env_config:
+                env_config['dashboard'] = {}
+            env_config['dashboard']['enabled'] = dashboard_enabled.lower() == 'true'
+        
+        dashboard_port = os.getenv('EMAIL_TOOL_DASHBOARD_PORT')
+        if dashboard_port:
+            if 'dashboard' not in env_config:
+                env_config['dashboard'] = {}
+            env_config['dashboard']['port'] = int(dashboard_port)
+        
+        return env_config
+    
+    def _merge_configs(self, base: Dict[str, Any], override: Dict[str, Any]) -> Dict[str, Any]:
+        """Merge two configuration dictionaries.
+        
+        Args:
+            base: Base configuration.
+            override: Override configuration (takes precedence).
+        
+        Returns:
+            Merged configuration.
+        """
+        result = base.copy()
+        
+        for key, value in override.items():
+            if key in result and isinstance(result[key], dict) and isinstance(value, dict):
+                result[key] = self._merge_configs(result[key], value)
+            else:
+                result[key] = value
+        
+        return result
+    
+    def _apply_defaults(self):
+        """Apply default values for missing configuration."""
+        defaults = {
+            'log_level': 'INFO',
+            'log_file': None,
+            'base_path': str(Path.home() / "email_organized"),
+            'output_format': 'eml',
+            'collision_strategy': 'rename',
+            'dashboard': {
+                'enabled': False,
+                'port': 8000
+            },
+            'sync': {
+                'enabled': False,
+                'interval': 3600,  # 1 hour
+                'sources': []
+            },
+            'rules': {
+                'path': None
+            }
+        }
+        
+        self.config = self._merge_configs(defaults, self.config)
+    
+    def get(self, key: str, default: Any = None) -> Any:
+        """Get a configuration value.
+        
+        Args:
+            key: Configuration key (supports dot notation for nested keys).
+            default: Default value if key not found.
+        
+        Returns:
+            Configuration value.
+        """
+        keys = key.split('.')
+        value = self.config
+        
+        for k in keys:
+            if isinstance(value, dict) and k in value:
+                value = value[k]
+            else:
+                return default
+        
+        return value
+    
+    def get_log_level(self) -> str:
+        """Get log level configuration."""
+        return self.get('log_level', 'INFO')
+    
+    def get_log_file(self) -> Optional[str]:
+        """Get log file path configuration."""
+        return self.get('log_file')
+    
+    def get_base_path(self) -> str:
+        """Get base path for organized emails."""
+        return self.get('base_path', str(Path.home() / "email_organized"))
+    
+    def get_output_format(self) -> str:
+        """Get output format configuration."""
+        return self.get('output_format', 'eml')
+    
+    def get_collision_strategy(self) -> str:
+        """Get collision handling strategy."""
+        return self.get('collision_strategy', 'rename')
+    
+    def get_dashboard_enabled(self) -> bool:
+        """Get dashboard enabled status."""
+        return self.get('dashboard.enabled', False)
+    
+    def get_dashboard_port(self) -> int:
+        """Get dashboard port."""
+        return self.get('dashboard.port', 8000)
+    
+    def get_sync_enabled(self) -> bool:
+        """Get sync enabled status."""
+        return self.get('sync.enabled', False)
+    
+    def get_sync_interval(self) -> int:
+        """Get sync interval in seconds."""
+        return self.get('sync.interval', 3600)
+    
+    def get_sync_sources(self) -> List[str]:
+        """Get sync sources."""
+        return self.get('sync.sources', [])
+    
+    def get_rules_path(self) -> Optional[str]:
+        """Get rules file path."""
+        return self.get('rules.path')
+    
+    def setup_logging(self):
+        """Set up logging based on configuration."""
+        log_level = self.get_log_level()
+        log_file = self.get_log_file()
+        
+        setup_logging(
+            log_level=log_level,
+            log_file=log_file,
+            console_output=True,
+            use_colors=True
+        )
+    
+    def to_dict(self) -> Dict[str, Any]:
+        """Convert configuration to dictionary."""
+        return self.config.copy()
+    
+    def save(self, path: Optional[Path] = None):
+        """Save configuration to YAML file.
+        
+        Args:
+            path: Path to save configuration. If None, uses config_path.
+        """
+        save_path = path or self.config_path
+        
+        # Ensure directory exists
+        save_path.parent.mkdir(parents=True, exist_ok=True)
+        
+        with open(save_path, 'w', encoding='utf-8') as f:
+            yaml.dump(self.config, f, default_flow_style=False, sort_keys=False)
+        
+        logger.info(f"Configuration saved to {save_path}")
 
+
+def load_config(config_path: Optional[Path] = None) -> EmailToolConfig:
+    """Load configuration from file.
+    
     Args:
-        rule_data: The rule configuration dictionary.
-        rule_name: The name of the rule (for error messages).
+        config_path: Path to configuration file. If None, uses default location.
+    
+    Returns:
+        EmailToolConfig instance.
+    """
+    return EmailToolConfig(config_path)
 
+
+# == Rule Configuration Functions ==
+
+def validate_rule_config(rule_data: Dict[str, Any], rule_name: str = "unnamed_rule") -> List[str]:
+    """Validate a single rule configuration.
+    
+    Args:
+        rule_data: Dictionary containing rule configuration.
+        rule_name: Name of the rule for error messages.
+    
     Returns:
         List of error messages (empty if valid).
     """
     errors = []
-
-    # Check required fields
-    if 'name' not in rule_data:
+    
+    # Check for required fields
+    if "name" not in rule_data or not rule_data.get("name"):
         errors.append(f"Rule '{rule_name}': missing required field 'name'")
-    elif not rule_data.get('name'):
+    elif not rule_data.get("name", "").strip():
         errors.append(f"Rule '{rule_name}': name cannot be empty")
-
-    if 'type' not in rule_data:
+    
+    if "type" not in rule_data:
         errors.append(f"Rule '{rule_name}': missing required field 'type'")
-    else:
-        try:
-            RuleType(rule_data['type'])
-        except ValueError:
-            errors.append(f"Rule '{rule_name}': invalid rule type '{rule_data['type']}'")
-
-    # Check pattern/value based on rule type
-    if 'type' in rule_data:
-        rule_type = rule_data['type']
-        has_pattern = 'pattern' in rule_data
-        has_value = 'value' in rule_data
-
-        if rule_type in [RuleType.FROM_EXACT.value, RuleType.FROM_PATTERN.value,
-                         RuleType.SUBJECT_EXACT.value, RuleType.SUBJECT_CONTAINS.value,
-                         RuleType.SUBJECT_PATTERN.value, RuleType.BODY_CONTAINS_EXACT.value,
-                         RuleType.BODY_CONTAINS_CONTAINS.value, RuleType.BODY_CONTAINS_PATTERN.value]:
-            if not has_pattern and not has_value:
-                errors.append(f"Rule '{rule_name}': missing required field 'pattern'")
-            elif has_pattern:
-                # Validate regex pattern
-                try:
-                    re.compile(rule_data['pattern'])
-                except re.error:
-                    errors.append(f"Rule '{rule_name}': invalid regex pattern '{rule_data['pattern']}'")
-
-        if rule_type == RuleType.HAS_ATTACHMENT.value:
-            if has_pattern:
-                errors.append(f"Rule '{rule_name}': has_attachment type should not have 'pattern'")
-
-    # Check priority if provided
-    if 'priority' in rule_data:
-        priority_value = rule_data['priority']
-        if not isinstance(priority_value, int) or isinstance(priority_value, bool):
+    elif rule_data.get("type") not in [rt.value for rt in RuleType]:
+        errors.append(f"Rule '{rule_name}': invalid rule type '{rule_data.get('type')}'")
+    
+    # Check pattern for pattern-based rules
+    pattern_required_types = [
+        RuleType.FROM_EXACT.value, RuleType.FROM_PATTERN.value,
+        RuleType.SUBJECT_EXACT.value, RuleType.SUBJECT_PATTERN.value,
+        RuleType.BODY_CONTAINS_EXACT.value, RuleType.BODY_CONTAINS_PATTERN.value
+    ]
+    
+    if rule_data.get("type") in pattern_required_types:
+        if "pattern" not in rule_data:
+            errors.append(f"Rule '{rule_name}': missing required field 'pattern'")
+        elif rule_data.get("type") in [RuleType.FROM_PATTERN.value, RuleType.SUBJECT_PATTERN.value, RuleType.BODY_CONTAINS_PATTERN.value]:
+            # Validate regex pattern
+            try:
+                re.compile(rule_data.get("pattern", ""))
+            except re.error as e:
+                errors.append(f"Rule '{rule_name}': invalid regex pattern: {e}")
+    
+    # Validate priority
+    if "priority" in rule_data:
+        priority = rule_data.get("priority")
+        if not isinstance(priority, int):
             errors.append(f"Rule '{rule_name}': priority must be an integer")
-        else:
-            priority = int(priority_value)
-            if priority < 0 or priority > 100:
-                errors.append(f"Rule '{rule_name}': priority must be between 0 and 100")
-
+        elif priority < 0 or priority > 100:
+            errors.append(f"Rule '{rule_name}': priority must be between 0 and 100")
+    
     return errors
 
 
-def _parse_rule_type(type_str: str) -> RuleType:
-    """Parse a rule type string into RuleType enum."""
-    try:
-        return RuleType(type_str)
-    except ValueError:
-        raise ValueError(f"Invalid rule type: {type_str}")
-
-
-def _parse_rule(rule_data: Dict[str, Any], rule_name: str = 'unknown') -> Rule:
-    """
-    Parse a rule configuration dictionary into a Rule object.
-
+def _parse_rule(rule_data: Dict[str, Any], rule_name: str = "unnamed_rule") -> Rule:
+    """Parse a rule configuration into a Rule object.
+    
     Args:
-        rule_data: The rule configuration dictionary.
-        rule_name: The name of the rule (for error messages).
-
+        rule_data: Dictionary containing rule configuration.
+        rule_name: Name of the rule.
+    
     Returns:
         Rule object.
-
-    Raises:
-        ConfigValidationError: If the rule configuration is invalid.
     """
-    errors = validate_rule_config(rule_data, rule_name)
-    if errors:
-        raise ConfigValidationError(f"Invalid rule configuration: {'; '.join(errors)}")
-
-    rule_type = _parse_rule_type(rule_data['type'])
-    pattern = rule_data.get('pattern')
-    value = rule_data.get('value')
-
-    # Use pattern if available, otherwise use value
-    if pattern is None and value is None:
-        # For types that require pattern or value, this should have been caught by validation
-        # But handle gracefully anyway
-        pattern = ""
-
+    rule_type_str = rule_data.get("type", "from_exact")
+    try:
+        rule_type = RuleType(rule_type_str)
+    except ValueError:
+        # This should not happen if validation is done first
+        rule_type = RuleType.FROM_EXACT
+    
     return Rule(
-        name=rule_data['name'],
+        name=rule_data.get("name", rule_name),
         rule_type=rule_type,
-        pattern=pattern,
-        value=value,
-        priority=int(rule_data.get('priority', 50)),
-        category=rule_data.get('category', 'general'),
-        description=rule_data.get('description', '')
+        pattern=rule_data.get("pattern", ""),
+        priority=rule_data.get("priority", 50),
+        category=rule_data.get("category", "general"),
+        description=rule_data.get("description", "")
     )
 
 
-def load_rules_from_yaml(filepath: str | Path) -> List[Rule]:
-    """
-    Load rules from a YAML configuration file.
-
+def load_rules_from_dict(rules_dict: Dict[str, Any]) -> List[Rule]:
+    """Load rules from a dictionary.
+    
     Args:
-        filepath: Path to the YAML file containing rule definitions.
+        rules_dict: Dictionary containing rules under 'rules' key.
+    
+    Returns:
+        List of Rule objects.
+    """
+    rules = []
+    rules_list = rules_dict.get("rules", [])
+    
+    for i, rule_data in enumerate(rules_list):
+        rule_name = rule_data.get("name", f"rule_{i+1}")
+        errors = validate_rule_config(rule_data, rule_name)
+        
+        if not errors:
+            rule = _parse_rule(rule_data, rule_name)
+            rules.append(rule)
+        else:
+            logger.warning(f"Skipping invalid rule '{rule_name}': {'; '.join(errors)}")
+    
+    return rules
 
+
+def load_rules_from_yaml(yaml_path: str) -> List[Rule]:
+    """Load rules from a YAML file.
+    
+    Args:
+        yaml_path: Path to YAML file.
+    
     Returns:
         List of Rule objects.
     """
     try:
-        filepath = Path(filepath)
-        
-        if not filepath.exists():
-            return []
-
-        with open(filepath, 'r', encoding='utf-8') as f:
-            config = yaml.safe_load(f)
-    except yaml.YAMLError:
+        with open(yaml_path, 'r', encoding='utf-8') as f:
+            rules_dict = yaml.safe_load(f) or {}
+        return load_rules_from_dict(rules_dict)
+    except FileNotFoundError:
+        logger.warning(f"Rules file not found: {yaml_path}")
         return []
-
-    if config is None:
-        return []
-
-    if not isinstance(config, dict):
-        return []
-
-    if 'rules' not in config:
-        return []
-
-    rules_data = config['rules']
-    if not isinstance(rules_data, list):
-        return []
-
-    rules: List[Rule] = []
-    for i, rule_data in enumerate(rules_data):
-        if not isinstance(rule_data, dict):
-            continue
-
-        rule_name = rule_data.get('name', f'rule_{i}')
-        try:
-            rule = _parse_rule(rule_data, rule_name)
-            rules.append(rule)
-        except ConfigValidationError:
-            # Skip invalid rules
-            continue
-
-    return rules
-
-
-def validate_rule_config_file(filepath: str | Path) -> List[str]:
-    """
-    Validate a rules configuration file without loading it.
-
-    Args:
-        filepath: Path to the YAML file.
-
-    Returns:
-        List of validation error messages (empty if valid).
-    """
-    filepath = Path(filepath)
-    errors = []
-
-    if not filepath.exists():
-        errors.append(f"File not found: {filepath}")
-        return errors
-
-    try:
-        with open(filepath, 'r', encoding='utf-8') as f:
-            config = yaml.safe_load(f)
     except yaml.YAMLError as e:
-        errors.append(f"YAML parsing error: {e}")
-        return errors
+        logger.warning(f"Failed to parse YAML file {yaml_path}: {e}")
+        return []
+    except Exception as e:
+        logger.warning(f"Failed to load rules from {yaml_path}: {e}")
+        return []
 
-    if not isinstance(config, dict):
-        errors.append("Configuration must be a YAML dictionary")
-        return errors
 
-    if 'rules' not in config:
-        errors.append("Configuration must contain 'rules' key")
-        return errors
-
-    rules_data = config['rules']
-    if not isinstance(rules_data, list):
-        errors.append("'rules' must be a list")
-        return errors
-
-    for i, rule_data in enumerate(rules_data):
-        if not isinstance(rule_data, dict):
-            errors.append(f"Rule at index {i} must be a dictionary")
-            continue
-
-        rule_name = rule_data.get('name', f'rule_{i}')
+def validate_rule_config_file(yaml_path: str) -> List[str]:
+    """Validate a rules configuration file.
+    
+    Args:
+        yaml_path: Path to YAML file.
+    
+    Returns:
+        List of error messages.
+    """
+    errors = []
+    
+    try:
+        with open(yaml_path, 'r', encoding='utf-8') as f:
+            rules_dict = yaml.safe_load(f) or {}
+    except FileNotFoundError:
+        return [f"File not found: {yaml_path}"]
+    except yaml.YAMLError as e:
+        return [f"YAML parsing error: {e}"]
+    except Exception as e:
+        return [f"Failed to read file: {e}"]
+    
+    rules_list = rules_dict.get("rules", [])
+    
+    for i, rule_data in enumerate(rules_list):
+        rule_name = rule_data.get("name", f"rule_{i+1}")
         rule_errors = validate_rule_config(rule_data, rule_name)
         errors.extend(rule_errors)
-
+    
     return errors
-
-
-def load_rules_from_dict(rules_data: Dict[str, Any]) -> List[Rule]:
-    """
-    Load rules from a dictionary containing a 'rules' key.
-
-    Args:
-        rules_data: Dictionary containing 'rules' key with list of rule configurations.
-
-    Returns:
-        List of Rule objects.
-    """
-    rules: List[Rule] = []
-    
-    if not isinstance(rules_data, dict):
-        return rules
-    
-    rules_list = rules_data.get('rules', [])
-    if not isinstance(rules_list, list):
-        return rules
-
-    for i, rule_data in enumerate(rules_list):
-        if not isinstance(rule_data, dict):
-            continue
-
-        rule_name = rule_data.get('name', f'rule_{i}')
-        try:
-            rule = _parse_rule(rule_data, rule_name)
-            rules.append(rule)
-        except ConfigValidationError:
-            # Skip invalid rules
-            continue
-
-    return rules

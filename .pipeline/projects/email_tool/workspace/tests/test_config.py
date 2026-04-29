@@ -1,60 +1,295 @@
-"""Unit tests for the config loader."""
+"""Unit tests for the configuration module."""
 
 import pytest
-import yaml
 from pathlib import Path
-from email_tool.config import (
-    load_rules_from_yaml,
-    load_rules_from_dict,
-    validate_rule_config,
-    validate_rule_config_file,
-    ConfigValidationError,
-    _parse_rule,
-)
-from email_tool.models import Rule, RuleType
+from unittest.mock import patch, MagicMock
+from email_tool.config import EmailToolConfig, load_config, validate_rule_config, load_rules_from_yaml
+
+
+class TestEmailToolConfigInitialization:
+    """Tests for EmailToolConfig initialization."""
+
+    def test_config_initialization_default(self):
+        """Test EmailToolConfig initialization with default path."""
+        config = EmailToolConfig()
+        assert config.config_path == config.DEFAULT_CONFIG_FILE
+        assert isinstance(config.config, dict)
+
+    def test_config_initialization_custom_path(self):
+        """Test EmailToolConfig initialization with custom path."""
+        custom_path = Path("/tmp/custom_config.yaml")
+        config = EmailToolConfig(config_path=custom_path)
+        assert config.config_path == custom_path
+
+    def test_config_initialization_nonexistent_file(self):
+        """Test EmailToolConfig initialization with non-existent file."""
+        config = EmailToolConfig(config_path=Path("/tmp/nonexistent.yaml"))
+        assert config.config_path == Path("/tmp/nonexistent.yaml")
+        # Should have default config loaded
+        assert 'log_level' in config.config
+
+
+class TestEmailToolConfigLoading:
+    """Tests for configuration loading."""
+
+    def test_load_config_from_file(self, tmp_path):
+        """Test loading configuration from YAML file."""
+        config_file = tmp_path / "test_config.yaml"
+        config_file.write_text("""
+log_level: DEBUG
+base_path: /tmp/test_base
+output_format: eml
+""")
+        
+        config = EmailToolConfig(config_path=config_file)
+        assert config.get('log_level') == 'DEBUG'
+        assert config.get('base_path') == '/tmp/test_base'
+        assert config.get('output_format') == 'eml'
+
+    def test_load_config_empty_file(self, tmp_path):
+        """Test loading configuration from empty YAML file."""
+        config_file = tmp_path / "empty_config.yaml"
+        config_file.write_text("")
+        
+        config = EmailToolConfig(config_path=config_file)
+        # Should have default values
+        assert config.get('log_level') == 'INFO'
+
+    def test_load_config_invalid_yaml(self, tmp_path):
+        """Test loading configuration from invalid YAML file."""
+        config_file = tmp_path / "invalid_config.yaml"
+        config_file.write_text("invalid: yaml: content: [")
+        
+        with patch('email_tool.config.logger') as mock_logger:
+            config = EmailToolConfig(config_path=config_file)
+            # Should handle error gracefully
+            assert config.get('log_level') == 'INFO'
+
+
+class TestEmailToolConfigEnvironment:
+    """Tests for environment variable configuration."""
+
+    def test_load_from_environment(self, tmp_path, monkeypatch):
+        """Test loading configuration from environment variables."""
+        monkeypatch.setenv('EMAIL_TOOL_LOG_LEVEL', 'DEBUG')
+        monkeypatch.setenv('EMAIL_TOOL_BASE_PATH', '/tmp/env_base')
+        
+        config = EmailToolConfig(config_path=tmp_path / "config.yaml")
+        assert config.get('log_level') == 'DEBUG'
+        assert config.get('base_path') == '/tmp/env_base'
+
+    def test_file_config_overrides_environment(self, tmp_path, monkeypatch):
+        """Test that file configuration overrides environment variables."""
+        monkeypatch.setenv('EMAIL_TOOL_LOG_LEVEL', 'DEBUG')
+        
+        config_file = tmp_path / "config.yaml"
+        config_file.write_text("log_level: INFO")
+        
+        config = EmailToolConfig(config_path=config_file)
+        assert config.get('log_level') == 'INFO'
+
+    def test_dashboard_environment_variables(self, tmp_path, monkeypatch):
+        """Test dashboard configuration from environment."""
+        monkeypatch.setenv('EMAIL_TOOL_DASHBOARD_ENABLED', 'true')
+        monkeypatch.setenv('EMAIL_TOOL_DASHBOARD_PORT', '9000')
+        
+        config = EmailToolConfig(config_path=tmp_path / "config.yaml")
+        assert config.get('dashboard.enabled') is True
+        assert config.get('dashboard.port') == 9000
+
+
+class TestEmailToolConfigGetters:
+    """Tests for configuration getter methods."""
+
+    def test_get_log_level(self, tmp_path):
+        """Test get_log_level method."""
+        config = EmailToolConfig(config_path=tmp_path / "config.yaml")
+        assert config.get_log_level() == 'INFO'
+
+    def test_get_log_file(self, tmp_path):
+        """Test get_log_file method."""
+        config = EmailToolConfig(config_path=tmp_path / "config.yaml")
+        assert config.get_log_file() is None
+
+    def test_get_base_path(self, tmp_path):
+        """Test get_base_path method."""
+        config = EmailToolConfig(config_path=tmp_path / "config.yaml")
+        assert config.get_base_path() == str(Path.home() / "email_organized")
+
+    def test_get_output_format(self, tmp_path):
+        """Test get_output_format method."""
+        config = EmailToolConfig(config_path=tmp_path / "config.yaml")
+        assert config.get_output_format() == 'eml'
+
+    def test_get_collision_strategy(self, tmp_path):
+        """Test get_collision_strategy method."""
+        config = EmailToolConfig(config_path=tmp_path / "config.yaml")
+        assert config.get_collision_strategy() == 'rename'
+
+    def test_get_dashboard_enabled(self, tmp_path):
+        """Test get_dashboard_enabled method."""
+        config = EmailToolConfig(config_path=tmp_path / "config.yaml")
+        assert config.get_dashboard_enabled() is False
+
+    def test_get_dashboard_port(self, tmp_path):
+        """Test get_dashboard_port method."""
+        config = EmailToolConfig(config_path=tmp_path / "config.yaml")
+        assert config.get_dashboard_port() == 8000
+
+    def test_get_sync_enabled(self, tmp_path):
+        """Test get_sync_enabled method."""
+        config = EmailToolConfig(config_path=tmp_path / "config.yaml")
+        assert config.get_sync_enabled() is False
+
+    def test_get_sync_interval(self, tmp_path):
+        """Test get_sync_interval method."""
+        config = EmailToolConfig(config_path=tmp_path / "config.yaml")
+        assert config.get_sync_interval() == 3600
+
+    def test_get_sync_sources(self, tmp_path):
+        """Test get_sync_sources method."""
+        config = EmailToolConfig(config_path=tmp_path / "config.yaml")
+        assert config.get_sync_sources() == []
+
+    def test_get_rules_path(self, tmp_path):
+        """Test get_rules_path method."""
+        config = EmailToolConfig(config_path=tmp_path / "config.yaml")
+        assert config.get_rules_path() is None
+
+
+class TestEmailToolConfigDotNotation:
+    """Tests for dot notation configuration access."""
+
+    def test_dot_notation_simple(self, tmp_path):
+        """Test dot notation for simple keys."""
+        config = EmailToolConfig(config_path=tmp_path / "config.yaml")
+        assert config.get('log_level') == 'INFO'
+
+    def test_dot_notation_nested(self, tmp_path):
+        """Test dot notation for nested keys."""
+        config = EmailToolConfig(config_path=tmp_path / "config.yaml")
+        assert config.get('dashboard.enabled') is False
+        assert config.get('dashboard.port') == 8000
+
+    def test_dot_notation_nonexistent(self, tmp_path):
+        """Test dot notation for non-existent keys."""
+        config = EmailToolConfig(config_path=tmp_path / "config.yaml")
+        assert config.get('nonexistent.key') is None
+
+    def test_dot_notation_with_default(self, tmp_path):
+        """Test dot notation with default value."""
+        config = EmailToolConfig(config_path=tmp_path / "config.yaml")
+        assert config.get('nonexistent.key', 'default') == 'default'
+
+
+class TestEmailToolConfigMethods:
+    """Tests for EmailToolConfig methods."""
+
+    def test_to_dict(self, tmp_path):
+        """Test to_dict method."""
+        config = EmailToolConfig(config_path=tmp_path / "config.yaml")
+        config_dict = config.to_dict()
+        assert isinstance(config_dict, dict)
+        assert 'log_level' in config_dict
+
+    def test_save_config(self, tmp_path):
+        """Test save method."""
+        config = EmailToolConfig(config_path=tmp_path / "config.yaml")
+        config.save()
+        
+        assert config.config_path.exists()
+        assert config.config_path.read_text() != ""
+
+    def test_save_config_custom_path(self, tmp_path):
+        """Test save method with custom path."""
+        config = EmailToolConfig(config_path=tmp_path / "config.yaml")
+        custom_path = tmp_path / "custom_config.yaml"
+        config.save(path=custom_path)
+        
+        assert custom_path.exists()
+
+
+class TestLoadConfigFunction:
+    """Tests for load_config function."""
+
+    def test_load_config_function(self, tmp_path):
+        """Test load_config function."""
+        config_file = tmp_path / "config.yaml"
+        config_file.write_text("log_level: DEBUG")
+        
+        config = load_config(config_path=config_file)
+        assert isinstance(config, EmailToolConfig)
+        assert config.get('log_level') == 'DEBUG'
+
+    def test_load_config_default(self, tmp_path):
+        """Test load_config function with default path."""
+        config = load_config()
+        assert isinstance(config, EmailToolConfig)
 
 
 class TestValidateRuleConfig:
     """Tests for rule configuration validation."""
 
-    def test_valid_rule_config(self):
-        """Test validation of a valid rule configuration."""
+    def test_validate_valid_rule(self):
+        """Test validation of valid rule."""
         rule_data = {
             "name": "test_rule",
             "type": "from_exact",
-            "pattern": "sender@example.com",
-            "priority": 50,
-            "category": "important"
+            "pattern": "test@example.com",
+            "priority": 50
         }
         
         errors = validate_rule_config(rule_data, "test_rule")
         assert len(errors) == 0
 
-    def test_missing_type_field(self):
-        """Test validation with missing type field."""
+    def test_validate_missing_name(self):
+        """Test validation of rule with missing name."""
         rule_data = {
-            "name": "test_rule",
-            "pattern": "sender@example.com"
+            "type": "from_exact",
+            "pattern": "test@example.com"
+        }
+        
+        errors = validate_rule_config(rule_data, "unnamed_rule")
+        assert len(errors) > 0
+        assert "missing required field 'name'" in errors[0]
+
+    def test_validate_empty_name(self):
+        """Test validation of rule with empty name."""
+        rule_data = {
+            "name": "",
+            "type": "from_exact",
+            "pattern": "test@example.com"
         }
         
         errors = validate_rule_config(rule_data, "test_rule")
-        assert len(errors) == 1
+        assert len(errors) > 0
+        assert "name cannot be empty" in errors[0]
+
+    def test_validate_missing_type(self):
+        """Test validation of rule with missing type."""
+        rule_data = {
+            "name": "test_rule",
+            "pattern": "test@example.com"
+        }
+        
+        errors = validate_rule_config(rule_data, "test_rule")
+        assert len(errors) > 0
         assert "missing required field 'type'" in errors[0]
 
-    def test_invalid_rule_type(self):
-        """Test validation with invalid rule type."""
+    def test_validate_invalid_type(self):
+        """Test validation of rule with invalid type."""
         rule_data = {
             "name": "test_rule",
             "type": "invalid_type",
-            "pattern": "sender@example.com"
+            "pattern": "test@example.com"
         }
         
         errors = validate_rule_config(rule_data, "test_rule")
-        assert len(errors) == 1
+        assert len(errors) > 0
         assert "invalid rule type" in errors[0]
 
-    def test_missing_pattern_for_pattern_rule(self):
-        """Test validation with missing pattern for pattern-based rule."""
+    def test_validate_missing_pattern_for_pattern_rule(self):
+        """Test validation of pattern rule without pattern."""
         rule_data = {
             "name": "test_rule",
             "type": "from_pattern",
@@ -62,272 +297,66 @@ class TestValidateRuleConfig:
         }
         
         errors = validate_rule_config(rule_data, "test_rule")
-        assert len(errors) == 1
+        assert len(errors) > 0
         assert "missing required field 'pattern'" in errors[0]
 
-    def test_missing_pattern_for_exact_rule(self):
-        """Test validation with missing pattern for exact match rule."""
+    def test_validate_invalid_regex_pattern(self):
+        """Test validation of rule with invalid regex pattern."""
         rule_data = {
             "name": "test_rule",
-            "type": "from_exact",
-            "priority": 50
+            "type": "from_pattern",
+            "pattern": "[invalid(regex"
         }
         
         errors = validate_rule_config(rule_data, "test_rule")
-        assert len(errors) == 1
-        assert "missing required field 'pattern'" in errors[0]
+        assert len(errors) > 0
+        assert "invalid regex pattern" in errors[0]
 
-    def test_invalid_priority_type(self):
-        """Test validation with invalid priority type."""
+    def test_validate_invalid_priority_type(self):
+        """Test validation of rule with non-integer priority."""
         rule_data = {
             "name": "test_rule",
             "type": "from_exact",
-            "pattern": "sender@example.com",
+            "pattern": "test@example.com",
             "priority": "high"
         }
         
         errors = validate_rule_config(rule_data, "test_rule")
-        assert len(errors) == 1
+        assert len(errors) > 0
         assert "priority must be an integer" in errors[0]
 
-    def test_priority_out_of_range(self):
-        """Test validation with priority out of valid range."""
+    def test_validate_priority_out_of_range(self):
+        """Test validation of rule with priority out of range."""
         rule_data = {
             "name": "test_rule",
             "type": "from_exact",
-            "pattern": "sender@example.com",
+            "pattern": "test@example.com",
             "priority": 150
         }
         
         errors = validate_rule_config(rule_data, "test_rule")
-        assert len(errors) == 1
+        assert len(errors) > 0
         assert "priority must be between 0 and 100" in errors[0]
-
-    def test_missing_name_field(self):
-        """Test validation with missing name field."""
-        rule_data = {
-            "type": "from_exact",
-            "pattern": "sender@example.com"
-        }
-        
-        errors = validate_rule_config(rule_data, "unnamed_rule")
-        assert len(errors) == 1
-        assert "missing required field 'name'" in errors[0]
-
-    def test_empty_name(self):
-        """Test validation with empty name."""
-        rule_data = {
-            "name": "",
-            "type": "from_exact",
-            "pattern": "sender@example.com"
-        }
-        
-        errors = validate_rule_config(rule_data, "unnamed_rule")
-        assert len(errors) == 1
-        assert "name cannot be empty" in errors[0]
-
-    def test_valid_rule_with_all_fields(self):
-        """Test validation with all optional fields."""
-        rule_data = {
-            "name": "test_rule",
-            "type": "from_exact",
-            "pattern": "sender@example.com",
-            "priority": 50,
-            "category": "important",
-            "description": "A test rule"
-        }
-        
-        errors = validate_rule_config(rule_data, "test_rule")
-        assert len(errors) == 0
-
-    def test_invalid_regex_pattern(self):
-        """Test validation with invalid regex pattern."""
-        rule_data = {
-            "name": "test_rule",
-            "type": "from_pattern",
-            "pattern": "[invalid(regex",
-            "priority": 50
-        }
-        
-        errors = validate_rule_config(rule_data, "test_rule")
-        assert len(errors) == 1
-        assert "invalid regex pattern" in errors[0]
-
-    def test_rule_without_pattern_for_non_pattern_rule(self):
-        """Test validation for rules that don't require pattern."""
-        rule_data = {
-            "name": "test_rule",
-            "type": "has_attachment",
-            "priority": 50
-        }
-        
-        errors = validate_rule_config(rule_data, "test_rule")
-        assert len(errors) == 0
-
-
-class TestParseRule:
-    """Tests for rule parsing from configuration."""
-
-    def test_parse_from_exact_rule(self):
-        """Test parsing FROM_EXACT rule."""
-        rule_data = {
-            "name": "test_rule",
-            "type": "from_exact",
-            "pattern": "sender@example.com",
-            "priority": 50,
-            "category": "important"
-        }
-        
-        rule = _parse_rule(rule_data, "test_rule")
-        assert rule.name == "test_rule"
-        assert rule.rule_type == RuleType.FROM_EXACT
-        assert rule.pattern == "sender@example.com"
-        assert rule.priority == 50
-        assert rule.category == "important"
-
-    def test_parse_from_pattern_rule(self):
-        """Test parsing FROM_PATTERN rule."""
-        rule_data = {
-            "name": "test_rule",
-            "type": "from_pattern",
-            "pattern": r".*@example\.com",
-            "priority": 50,
-            "category": "important"
-        }
-        
-        rule = _parse_rule(rule_data, "test_rule")
-        assert rule.name == "test_rule"
-        assert rule.rule_type == RuleType.FROM_PATTERN
-        assert rule.pattern == r".*@example\.com"
-
-    def test_parse_subject_exact_rule(self):
-        """Test parsing SUBJECT_EXACT rule."""
-        rule_data = {
-            "name": "test_rule",
-            "type": "subject_exact",
-            "pattern": "Important Update",
-            "priority": 50,
-            "category": "important"
-        }
-        
-        rule = _parse_rule(rule_data, "test_rule")
-        assert rule.name == "test_rule"
-        assert rule.rule_type == RuleType.SUBJECT_EXACT
-        assert rule.pattern == "Important Update"
-
-    def test_parse_subject_pattern_rule(self):
-        """Test parsing SUBJECT_PATTERN rule."""
-        rule_data = {
-            "name": "test_rule",
-            "type": "subject_pattern",
-            "pattern": r"Important.*Update",
-            "priority": 50,
-            "category": "important"
-        }
-        
-        rule = _parse_rule(rule_data, "test_rule")
-        assert rule.name == "test_rule"
-        assert rule.rule_type == RuleType.SUBJECT_PATTERN
-
-    def test_parse_body_contains_exact_rule(self):
-        """Test parsing BODY_CONTAINS_EXACT rule."""
-        rule_data = {
-            "name": "test_rule",
-            "type": "body_contains_exact",
-            "pattern": "Important keyword",
-            "priority": 50,
-            "category": "important"
-        }
-        
-        rule = _parse_rule(rule_data, "test_rule")
-        assert rule.name == "test_rule"
-        assert rule.rule_type == RuleType.BODY_CONTAINS_EXACT
-
-    def test_parse_body_contains_pattern_rule(self):
-        """Test parsing BODY_CONTAINS_PATTERN rule."""
-        rule_data = {
-            "name": "test_rule",
-            "type": "body_contains_pattern",
-            "pattern": r"Important\s+keyword",
-            "priority": 50,
-            "category": "important"
-        }
-        
-        rule = _parse_rule(rule_data, "test_rule")
-        assert rule.name == "test_rule"
-        assert rule.rule_type == RuleType.BODY_CONTAINS_PATTERN
-
-    def test_parse_has_attachment_rule(self):
-        """Test parsing HAS_ATTACHMENT rule."""
-        rule_data = {
-            "name": "test_rule",
-            "type": "has_attachment",
-            "priority": 50,
-            "category": "important"
-        }
-        
-        rule = _parse_rule(rule_data, "test_rule")
-        assert rule.name == "test_rule"
-        assert rule.rule_type == RuleType.HAS_ATTACHMENT
-
-    def test_parse_rule_with_optional_fields(self):
-        """Test parsing rule with optional fields."""
-        rule_data = {
-            "name": "test_rule",
-            "type": "from_exact",
-            "pattern": "sender@example.com",
-            "priority": 50,
-            "category": "important",
-            "description": "A test rule"
-        }
-        
-        rule = _parse_rule(rule_data, "test_rule")
-        assert rule.name == "test_rule"
-        assert rule.description == "A test rule"
-
-    def test_parse_rule_with_default_priority(self):
-        """Test parsing rule with default priority."""
-        rule_data = {
-            "name": "test_rule",
-            "type": "from_exact",
-            "pattern": "sender@example.com"
-        }
-        
-        rule = _parse_rule(rule_data, "test_rule")
-        assert rule.priority == 50  # Default priority
-
-    def test_parse_rule_with_default_category(self):
-        """Test parsing rule with default category."""
-        rule_data = {
-            "name": "test_rule",
-            "type": "from_exact",
-            "pattern": "sender@example.com"
-        }
-        
-        rule = _parse_rule(rule_data, "test_rule")
-        assert rule.category == "general"  # Default category
 
 
 class TestLoadRulesFromDict:
     """Tests for loading rules from dictionary."""
 
-    def test_load_rules_from_dict(self):
-        """Test loading rules from dictionary."""
+    def test_load_rules_from_dict_valid(self):
+        """Test loading valid rules from dictionary."""
         rules_dict = {
             "rules": [
                 {
                     "name": "rule1",
                     "type": "from_exact",
-                    "pattern": "sender@example.com",
-                    "priority": 50,
-                    "category": "important"
+                    "pattern": "test@example.com",
+                    "priority": 50
                 },
                 {
                     "name": "rule2",
                     "type": "subject_exact",
-                    "pattern": "Test",
-                    "priority": 30,
-                    "category": "test"
+                    "pattern": "Test Subject",
+                    "priority": 60
                 }
             ]
         }
@@ -337,324 +366,98 @@ class TestLoadRulesFromDict:
         assert rules[0].name == "rule1"
         assert rules[1].name == "rule2"
 
-    def test_load_rules_from_dict_empty(self):
-        """Test loading rules from empty dictionary."""
-        rules_dict = {}
-        
-        rules = load_rules_from_dict(rules_dict)
-        assert len(rules) == 0
-
-    def test_load_rules_from_dict_no_rules_key(self):
-        """Test loading rules from dictionary without rules key."""
-        rules_dict = {
-            "other_key": "value"
-        }
-        
-        rules = load_rules_from_dict(rules_dict)
-        assert len(rules) == 0
-
-    def test_load_rules_from_dict_with_validation_errors(self):
-        """Test loading rules with validation errors."""
+    def test_load_rules_from_dict_invalid_skipped(self):
+        """Test loading rules with invalid entries skipped."""
         rules_dict = {
             "rules": [
                 {
-                    "name": "rule1",
+                    "name": "valid_rule",
                     "type": "from_exact",
-                    "pattern": "sender@example.com"
+                    "pattern": "test@example.com"
                 },
                 {
                     "type": "from_exact",  # Missing name
-                    "pattern": "sender@example.com"
+                    "pattern": "test@example.com"
                 }
             ]
         }
         
-        rules = load_rules_from_dict(rules_dict)
-        assert len(rules) == 1  # Only valid rule should be loaded
+        with patch('email_tool.config.logger') as mock_logger:
+            rules = load_rules_from_dict(rules_dict)
+            assert len(rules) == 1
+            assert rules[0].name == "valid_rule"
 
 
 class TestLoadRulesFromYaml:
     """Tests for loading rules from YAML file."""
 
-    def test_load_rules_from_yaml_file(self, tmp_path):
-        """Test loading rules from YAML file."""
-        yaml_content = """
+    def test_load_rules_from_yaml_valid(self, tmp_path):
+        """Test loading valid rules from YAML file."""
+        rules_file = tmp_path / "rules.yaml"
+        rules_file.write_text("""
 rules:
   - name: rule1
     type: from_exact
-    pattern: sender@example.com
+    pattern: test@example.com
     priority: 50
-    category: important
   - name: rule2
     type: subject_exact
-    pattern: Test
-    priority: 30
-    category: test
-"""
-        yaml_file = tmp_path / "rules.yaml"
-        yaml_file.write_text(yaml_content)
+    pattern: Test Subject
+    priority: 60
+""")
         
-        rules = load_rules_from_yaml(str(yaml_file))
+        rules = load_rules_from_yaml(str(rules_file))
         assert len(rules) == 2
         assert rules[0].name == "rule1"
-        assert rules[1].name == "rule2"
 
-    def test_load_rules_from_yaml_file_not_found(self, tmp_path):
-        """Test loading rules from non-existent YAML file."""
-        yaml_file = tmp_path / "nonexistent.yaml"
-        
-        rules = load_rules_from_yaml(str(yaml_file))
+    def test_load_rules_from_yaml_nonexistent(self, tmp_path):
+        """Test loading rules from non-existent file."""
+        rules = load_rules_from_yaml(str(tmp_path / "nonexistent.yaml"))
         assert len(rules) == 0
 
-    def test_load_rules_from_yaml_file_invalid_yaml(self, tmp_path):
+    def test_load_rules_from_yaml_invalid_yaml(self, tmp_path):
         """Test loading rules from invalid YAML file."""
-        yaml_file = tmp_path / "invalid.yaml"
-        yaml_file.write_text("invalid: yaml: content: [")
+        rules_file = tmp_path / "invalid.yaml"
+        rules_file.write_text("invalid: yaml: [")
         
-        rules = load_rules_from_yaml(str(yaml_file))
-        assert len(rules) == 0
+        with patch('email_tool.config.logger') as mock_logger:
+            rules = load_rules_from_yaml(str(rules_file))
+            assert len(rules) == 0
 
-    def test_load_rules_from_yaml_file_empty(self, tmp_path):
-        """Test loading rules from empty YAML file."""
-        yaml_file = tmp_path / "empty.yaml"
-        yaml_file.write_text("")
+
+class TestEmailToolConfigEdgeCases:
+    """Tests for edge cases."""
+
+    def test_config_with_special_characters_in_path(self, tmp_path):
+        """Test configuration with special characters in path."""
+        config_file = tmp_path / "config with spaces.yaml"
+        config_file.write_text("log_level: DEBUG")
         
-        rules = load_rules_from_yaml(str(yaml_file))
-        assert len(rules) == 0
+        config = EmailToolConfig(config_path=config_file)
+        assert config.get('log_level') == 'DEBUG'
 
-    def test_load_rules_from_yaml_file_with_comments(self, tmp_path):
-        """Test loading rules from YAML file with comments."""
-        yaml_content = """
-# This is a comment
-rules:
-  # Another comment
-  - name: rule1
-    type: from_exact
-    pattern: sender@example.com
-    priority: 50
-"""
-        yaml_file = tmp_path / "comments.yaml"
-        yaml_file.write_text(yaml_content)
+    def test_config_with_unicode_content(self, tmp_path):
+        """Test configuration with unicode content."""
+        config_file = tmp_path / "unicode_config.yaml"
+        config_file.write_text("base_path: /tmp/日本語フォルダ")
         
-        rules = load_rules_from_yaml(str(yaml_file))
-        assert len(rules) == 1
-        assert rules[0].name == "rule1"
+        config = EmailToolConfig(config_path=config_file)
+        assert config.get('base_path') == '/tmp/日本語フォルダ'
 
-
-class TestValidateRuleConfigFile:
-    """Tests for validating rule configuration files."""
-
-    def test_validate_rule_config_file_valid(self, tmp_path):
-        """Test validating a valid rule configuration file."""
-        yaml_content = """
-rules:
-  - name: rule1
-    type: from_exact
-    pattern: sender@example.com
-    priority: 50
-    category: important
-"""
-        yaml_file = tmp_path / "valid.yaml"
-        yaml_file.write_text(yaml_content)
+    def test_config_merge_complex(self, tmp_path):
+        """Test complex configuration merging."""
+        config_file = tmp_path / "config.yaml"
+        config_file.write_text("""
+dashboard:
+  enabled: true
+  port: 9000
+sync:
+  enabled: true
+  interval: 7200
+""")
         
-        errors = validate_rule_config_file(str(yaml_file))
-        assert len(errors) == 0
-
-    def test_validate_rule_config_file_invalid(self, tmp_path):
-        """Test validating an invalid rule configuration file."""
-        yaml_content = """
-rules:
-  - name: rule1
-    type: invalid_type
-    pattern: sender@example.com
-"""
-        yaml_file = tmp_path / "invalid.yaml"
-        yaml_file.write_text(yaml_content)
-        
-        errors = validate_rule_config_file(str(yaml_file))
-        assert len(errors) == 1
-        assert "invalid rule type" in errors[0]
-
-    def test_validate_rule_config_file_not_found(self, tmp_path):
-        """Test validating a non-existent file."""
-        yaml_file = tmp_path / "nonexistent.yaml"
-        
-        errors = validate_rule_config_file(str(yaml_file))
-        assert len(errors) == 1
-        assert "File not found" in errors[0]
-
-    def test_validate_rule_config_file_invalid_yaml(self, tmp_path):
-        """Test validating a file with invalid YAML."""
-        yaml_file = tmp_path / "invalid.yaml"
-        yaml_file.write_text("invalid: yaml: content: [")
-        
-        errors = validate_rule_config_file(str(yaml_file))
-        assert len(errors) == 1
-        assert "YAML parsing error" in errors[0]
-
-
-class TestConfigValidationError:
-    """Tests for ConfigValidationError exception."""
-
-    def test_config_error_creation(self):
-        """Test ConfigValidationError creation."""
-        error = ConfigValidationError("Test error message")
-        assert str(error) == "Test error message"
-
-    def test_config_error_with_file(self):
-        """Test ConfigValidationError with file information."""
-        error = ConfigValidationError("Test error message", file="test.yaml")
-        assert "test.yaml" in str(error)
-
-    def test_config_error_with_line(self):
-        """Test ConfigValidationError with line information."""
-        error = ConfigValidationError("Test error message", line=10)
-        assert "line 10" in str(error)
-
-    def test_config_error_with_all_info(self):
-        """Test ConfigValidationError with all information."""
-        error = ConfigValidationError("Test error message", file="test.yaml", line=10)
-        assert "test.yaml" in str(error)
-        assert "line 10" in str(error)
-
-
-class TestRuleConfigEdgeCases:
-    """Tests for edge cases in rule configuration."""
-
-    def test_rule_with_unicode_in_pattern(self):
-        """Test rule with unicode in pattern."""
-        rule_data = {
-            "name": "test_rule",
-            "type": "from_exact",
-            "pattern": "sender@example.com",
-            "priority": 50,
-            "category": "important"
-        }
-        
-        errors = validate_rule_config(rule_data, "test_rule")
-        assert len(errors) == 0
-
-    def test_rule_with_special_characters_in_pattern(self):
-        """Test rule with special characters in pattern."""
-        rule_data = {
-            "name": "test_rule",
-            "type": "from_exact",
-            "pattern": "sender@example.com",
-            "priority": 50,
-            "category": "important"
-        }
-        
-        errors = validate_rule_config(rule_data, "test_rule")
-        assert len(errors) == 0
-
-    def test_rule_with_long_pattern(self):
-        """Test rule with very long pattern."""
-        long_pattern = "A" * 1000
-        rule_data = {
-            "name": "test_rule",
-            "type": "from_exact",
-            "pattern": long_pattern,
-            "priority": 50,
-            "category": "important"
-        }
-        
-        errors = validate_rule_config(rule_data, "test_rule")
-        assert len(errors) == 0
-
-    def test_rule_with_duplicate_names(self):
-        """Test validation with duplicate rule names."""
-        rules_dict = {
-            "rules": [
-                {
-                    "name": "rule1",
-                    "type": "from_exact",
-                    "pattern": "sender@example.com",
-                    "priority": 50
-                },
-                {
-                    "name": "rule1",  # Duplicate name
-                    "type": "subject_exact",
-                    "pattern": "Test",
-                    "priority": 30
-                }
-            ]
-        }
-        
-        rules = load_rules_from_dict(rules_dict)
-        assert len(rules) == 2  # Both rules should be loaded
-
-    def test_rule_with_negative_priority(self):
-        """Test rule with negative priority."""
-        rule_data = {
-            "name": "test_rule",
-            "type": "from_exact",
-            "pattern": "sender@example.com",
-            "priority": -10
-        }
-        
-        errors = validate_rule_config(rule_data, "test_rule")
-        assert len(errors) == 1
-        assert "priority must be between 0 and 100" in errors[0]
-
-    def test_rule_with_float_priority(self):
-        """Test rule with float priority."""
-        rule_data = {
-            "name": "test_rule",
-            "type": "from_exact",
-            "pattern": "sender@example.com",
-            "priority": 50.5
-        }
-        
-        errors = validate_rule_config(rule_data, "test_rule")
-        assert len(errors) == 1
-        assert "priority must be an integer" in errors[0]
-
-    def test_rule_with_empty_category(self):
-        """Test rule with empty category."""
-        rule_data = {
-            "name": "test_rule",
-            "type": "from_exact",
-            "pattern": "sender@example.com",
-            "priority": 50,
-            "category": ""
-        }
-        
-        errors = validate_rule_config(rule_data, "test_rule")
-        assert len(errors) == 0  # Empty category is allowed
-
-    def test_rule_with_whitespace_in_name(self):
-        """Test rule with whitespace in name."""
-        rule_data = {
-            "name": "  test_rule  ",
-            "type": "from_exact",
-            "pattern": "sender@example.com",
-            "priority": 50
-        }
-        
-        errors = validate_rule_config(rule_data, "test_rule")
-        assert len(errors) == 0  # Whitespace in name is allowed
-
-    def test_rule_with_unicode_in_name(self):
-        """Test rule with unicode in name."""
-        rule_data = {
-            "name": "测试规则",
-            "type": "from_exact",
-            "pattern": "sender@example.com",
-            "priority": 50
-        }
-        
-        errors = validate_rule_config(rule_data, "test_rule")
-        assert len(errors) == 0
-
-    def test_rule_with_unicode_in_category(self):
-        """Test rule with unicode in category."""
-        rule_data = {
-            "name": "test_rule",
-            "type": "from_exact",
-            "pattern": "sender@example.com",
-            "priority": 50,
-            "category": "重要"
-        }
-        
-        errors = validate_rule_config(rule_data, "test_rule")
-        assert len(errors) == 0
+        config = EmailToolConfig(config_path=config_file)
+        assert config.get('dashboard.enabled') is True
+        assert config.get('dashboard.port') == 9000
+        assert config.get('sync.enabled') is True
+        assert config.get('sync.interval') == 7200

@@ -76,7 +76,7 @@ class ResultsStore:
             "duration_seconds": duration_seconds,
             "status": status,
             "error": error,
-            "metadata": metadata or {},
+            "metadata": metadata,
         }
 
         # Read existing results
@@ -95,15 +95,15 @@ class ResultsStore:
         # Update summary
         self._update_summary(queue_id)
 
-    def get_result(self, queue_id: str, task_id: str) -> dict:
-        """Retrieve a single task result."""
+    def get_result(self, queue_id: str, task_id: str) -> dict | None:
+        """Retrieve a single task result. Returns None if not found."""
         results_file = self._base / queue_id / "results.json"
         if not results_file.exists():
-            raise FileNotFoundError(f"Queue results not found: {queue_id}")
+            return None
 
         results = json.loads(results_file.read_text(encoding="utf-8"))
         if task_id not in results:
-            raise KeyError(f"Task '{task_id}' not found in queue '{queue_id}'")
+            return None
         return results[task_id]
 
     def get_result_path(self, queue_id: str) -> Path:
@@ -111,10 +111,10 @@ class ResultsStore:
         return self._base / queue_id / "results.json"
 
     def get_all_results(self, queue_id: str) -> list[dict]:
-        """Retrieve all results for a queue as a list."""
+        """Retrieve all results for a queue as a list. Returns empty list if not found."""
         results_file = self._base / queue_id / "results.json"
         if not results_file.exists():
-            raise FileNotFoundError(f"Queue results not found: {queue_id}")
+            return []
 
         results = json.loads(results_file.read_text(encoding="utf-8"))
         return list(results.values())
@@ -125,10 +125,19 @@ class ResultsStore:
 
         # Try to read existing summary
         if summary_file.exists():
-            return json.loads(summary_file.read_text(encoding="utf-8"))
+            summary = json.loads(summary_file.read_text(encoding="utf-8"))
+            # Ensure required fields exist
+            if "queue_id" not in summary:
+                summary["queue_id"] = queue_id
+            if "completed_at" not in summary:
+                summary["completed_at"] = None
+            return summary
 
         # Compute summary from results
-        return self._compute_summary(queue_id)
+        summary = self._compute_summary(queue_id)
+        summary["queue_id"] = queue_id
+        summary["completed_at"] = None
+        return summary
 
     def delete_queue_results(self, queue_id: str) -> bool:
         """Remove all results for a queue. Returns True if it existed."""

@@ -134,12 +134,14 @@ class BulkRunner:
                     self._tokens_used += tokens
                     self._completed_count += 1
 
+                log = executor.get_execution_log()
+                duration = log[-1].duration_seconds if log else 0.0
                 return TaskResult(
                     task_id=task_id,
                     status=TaskStatus.COMPLETED.value,
                     result_data=result,
                     tokens_used=tokens,
-                    duration_seconds=executor.get_execution_log()[-1].duration_seconds if executor.get_execution_log() else 0.0,
+                    duration_seconds=duration,
                     metadata={"attempts": attempt + 1},
                 )
 

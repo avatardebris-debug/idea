@@ -1,7 +1,7 @@
 """Tests for CLI."""
 
 import pytest
-from click.testing import CliRunner
+from typer.testing import CliRunner
 from drop_servicing_tool.cli import app
 
 
@@ -72,8 +72,11 @@ output_format: Test output
         assert result.exit_code != 0
         assert "invalid json" in result.output.lower()
 
-    def test_bulk_list_empty(self):
+    def test_bulk_list_empty(self, tmp_path, monkeypatch):
         """Test listing bulk queues when none exist."""
+        # Set environment variable to use isolated temp directory
+        monkeypatch.setenv("DST_BULK_BASE_DIR", str(tmp_path))
+        
         runner = CliRunner()
         result = runner.invoke(app, ["bulk", "list"])
         assert result.exit_code == 0

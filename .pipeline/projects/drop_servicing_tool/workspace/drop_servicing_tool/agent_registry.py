@@ -36,8 +36,15 @@ class AgentRegistry:
                 data = json.loads(agent_file.read_text(encoding="utf-8"))
                 name = data.get("name")
                 if name:
-                    self._agents[name] = data.get("client", {})
+                    # Load metadata
                     self._metadata[name] = data.get("metadata", {})
+                    # Load client if present (for backward compatibility)
+                    client = data.get("client")
+                    if client is not None:
+                        self._agents[name] = client
+                    else:
+                        # Create placeholder client (client is not persisted)
+                        self._agents[name] = {"type": "loaded_from_disk"}
             except (json.JSONDecodeError, IOError):
                 # Skip corrupted files
                 continue
@@ -51,13 +58,14 @@ class AgentRegistry:
         metadata: Optional[Dict[str, Any]] = None,
     ) -> None:
         """Register an agent with a client and optional metadata."""
+        if not name:
+            raise ValueError("Agent name cannot be empty")
         self._agents[name] = client
         self._metadata[name] = metadata or {}
-        # Persist to disk
+        # Persist to disk (metadata only, client is not persisted)
         agent_file = self._agents_dir / f"{name}.json"
         agent_data = {
             "name": name,
-            "client": client,
             "metadata": self._metadata[name],
         }
         agent_file.write_text(json.dumps(agent_data, indent=2), encoding="utf-8")

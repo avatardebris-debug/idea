@@ -272,6 +272,28 @@ class EmailParser:
         """Initialize the email parser."""
         pass
     
+    def parse_batch(self, directory: str | Path) -> List[Email]:
+        """
+        Parse all .eml files in a directory (recursively).
+        
+        Args:
+            directory: Path to directory containing .eml files.
+        
+        Returns:
+            List of Email objects.
+        """
+        directory = Path(directory)
+        if not directory.exists():
+            return []
+        
+        emails = []
+        for eml_file in directory.rglob("*.eml"):
+            email = self.parse_file(eml_file)
+            if email:
+                emails.append(email)
+        
+        return emails
+    
     def parse(self, source: str | Path | bytes) -> Optional[Email]:
         """
         Parse email from a file path or content string/bytes.

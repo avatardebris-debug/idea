@@ -2,7 +2,7 @@
 
 import re
 from typing import List
-from email_tool.models import Email, Rule, RuleMatch, RuleType, RuleMatchStrategy
+from email_tool.models import Email, Rule, RuleMatch, RuleType, RuleMatchStrategy, RuleMatchType
 
 
 class RuleEngine:
@@ -20,20 +20,20 @@ class RuleEngine:
         self.match_strategy = match_strategy
 
     @staticmethod
-    def _get_match_type(rule_type: RuleType) -> str:
-        """Get the match type string from rule type."""
+    def _get_match_type(rule_type: RuleType) -> RuleMatchType:
+        """Get the match type enum from rule type."""
         type_map = {
-            RuleType.FROM_EXACT: "from",
-            RuleType.FROM_PATTERN: "from",
-            RuleType.SUBJECT_EXACT: "subject",
-            RuleType.SUBJECT_CONTAINS: "subject",
-            RuleType.SUBJECT_PATTERN: "subject",
-            RuleType.BODY_CONTAINS_EXACT: "body",
-            RuleType.BODY_CONTAINS_CONTAINS: "body",
-            RuleType.BODY_CONTAINS_PATTERN: "body",
-            RuleType.HAS_ATTACHMENT: "attachment"
+            RuleType.FROM_EXACT: RuleMatchType.EXACT,
+            RuleType.FROM_PATTERN: RuleMatchType.REGEX,
+            RuleType.SUBJECT_EXACT: RuleMatchType.EXACT,
+            RuleType.SUBJECT_CONTAINS: RuleMatchType.CONTAINS,
+            RuleType.SUBJECT_PATTERN: RuleMatchType.REGEX,
+            RuleType.BODY_CONTAINS_EXACT: RuleMatchType.EXACT,
+            RuleType.BODY_CONTAINS_CONTAINS: RuleMatchType.CONTAINS,
+            RuleType.BODY_CONTAINS_PATTERN: RuleMatchType.REGEX,
+            RuleType.HAS_ATTACHMENT: RuleMatchType.EXACT
         }
-        return type_map.get(rule_type, "unknown")
+        return type_map.get(rule_type, RuleMatchType.EXACT)
 
     @staticmethod
     def evaluate_rule(rule: Rule, email: Email) -> List[RuleMatch]:
@@ -176,10 +176,10 @@ class RuleEngine:
             return all_matches[:1] if all_matches else []
         elif self.match_strategy == RuleMatchStrategy.BEST_MATCH:
             if all_matches:
-                return [max(all_matches, key=lambda m: m.priority)]
+                return [max(all_matches, key=lambda m: m.rule.priority)]
             return []
         elif self.match_strategy == RuleMatchStrategy.ALL_MATCH:
             # Sort by priority (highest first)
-            return sorted(all_matches, key=lambda m: m.priority, reverse=True)
+            return sorted(all_matches, key=lambda m: m.rule.priority, reverse=True)
 
         return all_matches

@@ -67,7 +67,7 @@ class TestAgentConfig:
         """Test AgentConfig default values."""
         config = AgentConfig(provider=ProviderType.OPENAI, model="test")
         assert config.mode == AgentMode.AUTO
-        assert config.temperature == 1.0
+        assert config.temperature == 0.7
         assert config.max_tokens is None
         assert config.system_prompt_override is None
         assert config.fallback_models == []
@@ -175,7 +175,7 @@ class TestGetPreset:
 
     def test_get_unknown_preset(self):
         """Test getting unknown preset."""
-        with pytest.raises(ValueError, match="Unknown preset"):
+        with pytest.raises(KeyError, match="Unknown preset"):
             get_preset("unknown_preset")
 
 

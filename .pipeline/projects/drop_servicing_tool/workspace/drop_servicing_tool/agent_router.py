@@ -295,17 +295,12 @@ class LLMClientRouter:
     def get_provider_client(self, provider: ProviderType) -> Any:
         """Return the client registered for *provider*.
         
-        If no client is registered, returns a dict with provider info
-        as a placeholder for testing purposes.
+        Raises KeyError if no client is registered for the provider.
         """
         key = provider.value
         if key in self.providers:
             return self.providers[key]
-        # Return a placeholder config when no client is registered
-        return {
-            "provider": provider.value,
-            "model": self.configs.get_config(0).model if self.configs.get_config(0) else "unknown",
-        }
+        raise KeyError(f"No client registered for provider: {provider.value}")
 
     def list_providers(self) -> list[str]:
         """Return names of all registered providers."""
@@ -318,7 +313,7 @@ class LLMClientRouter:
     ) -> Any | None:
         """Try *primary* first, then each name in *fallbacks*.
 
-        Returns the first available client, or ``None``.
+        Returns the first available client, or ``None`` if none found.
         """
         # Try primary
         try:

@@ -15,7 +15,7 @@ Phase 3 core infrastructure is already built:
 
 ---
 
-## Task 1: CLI — `sop run --agent-mode` and `--per-file-output`
+- [ ] Task 1: CLI — `sop run --agent-mode` and `--per-file-output`
 - **What to build**: Extend the existing `run` command in `cli.py` to support:
   - `--agent-mode <fast|balanced|quality>` — applies preset agent configs to MultiAgentSOPExecutor
   - `--per-file-output` — writes each step's output to a separate file
@@ -27,7 +27,7 @@ Phase 3 core infrastructure is already built:
   - `sop run blog_post --input '{"topic": "AI"}' --agent-config config.json` loads custom configs
   - Falls back to standard SOPExecutor when --agent-mode is not specified (backward compatible)
 
-## Task 2: CLI — `sop templates` subcommand
+- [ ] Task 2: CLI — `sop templates` subcommand
 - **What to build**: New `templates` Typer sub-app with:
   - `sop templates list` — list all available template SOPs
   - `sop templates create <name> [--as <output_name>]` — create a new SOP from a template
@@ -39,7 +39,7 @@ Phase 3 core infrastructure is already built:
   - `sop templates show social_media` prints the template YAML
   - `sop templates create nonexistent` fails with clear error
 
-## Task 3: CLI — `sop bulk export` subcommand
+- [ ] Task 3: CLI — `sop bulk export` subcommand
 - **What to build**: New `bulk export` command with format options:
   - `sop bulk export <queue_id> --format csv` — CSV export with configurable columns
   - `sop bulk export <queue_id> --format jsonl` — JSONL export with full result data
@@ -54,7 +54,7 @@ Phase 3 core infrastructure is already built:
   - Cost export produces a human-readable cost report
   - All formats work with an empty queue (graceful handling)
 
-## Task 4: CLI — `sop cost` command
+- [ ] Task 4: CLI — `sop cost` command
 - **What to build**: `sop cost` command that shows cost comparison:
   - `sop cost <sop_name>` — cost comparison across agent modes for a given SOP
   - `sop cost` (no args) — show cost comparison for all available SOPs
@@ -65,7 +65,7 @@ Phase 3 core infrastructure is already built:
   - Uses the existing `_COST_PER_M_TOKEN` pricing from agent_router.py
   - Handles SOPs not found gracefully
 
-## Task 5: ResultsStore — export methods
+- [ ] Task 5: ResultsStore — export methods
 - **What to build**: Add export methods to `ResultsStore`:
   - `export_csv(queue_id, columns=None) -> str` — returns CSV string
   - `export_jsonl(queue_id) -> str` — returns JSONL string
@@ -79,7 +79,7 @@ Phase 3 core infrastructure is already built:
   - `export_cost_report` generates a readable cost report
   - All methods handle missing queues gracefully (raise FileNotFoundError)
 
-## Task 6: Integration test for multi-agent SOP execution
+- [ ] Task 6: Integration test for multi-agent SOP execution
 - **What to build**: `test_phase3.py` — integration test that:
   - Creates a MultiAgentSOPExecutor with a registered mock client
   - Runs a multi-step SOP with different agent configs per step
@@ -93,7 +93,7 @@ Phase 3 core infrastructure is already built:
   - Fallback to secondary provider works when primary fails
   - Per-step output is correctly accumulated
 
-## Task 7: Integration test for template library and CLI
+- [ ] Task 7: Integration test for template library and CLI
 - **What to build**: `test_phase3.py` — integration tests for:
   - TemplateStore.list_templates() returns all 5 templates
   - TemplateStore.create_from_template() creates valid SOP files
@@ -106,7 +106,7 @@ Phase 3 core infrastructure is already built:
   - TemplateLibrary register/get/delete round-trips correctly
   - AgentRegistry register/get/delete round-trips correctly
 
-## Task 8: Integration test for results export
+- [ ] Task 8: Integration test for results export
 - **What to build**: `test_phase3.py` — integration tests for:
   - ResultsStore with mock data, then export to CSV/JSONL/per-file
   - Verify CSV has correct headers and rows
