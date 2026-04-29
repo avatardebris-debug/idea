@@ -118,13 +118,46 @@ class ExecutorAgent(AgentProcess):
                 "    Common mappings: bs4→beautifulsoup4, PIL→Pillow, cv2→opencv-python,\n"
                 "    yaml→pyyaml, dotenv→python-dotenv, sklearn→scikit-learn.\n"
                 "1. Work through each unchecked task in order.\n"
-                f"2. Write all code files to: {workspace}\n"
+                f"2. WORKSPACE PATH (use this EXACT absolute path for ALL files):\n"
+                f"   {workspace}\n"
+                f"   ⚠️  CRITICAL: NEVER create a directory called 'workspace/' — the path above\n"
+                f"   IS the workspace. All shell commands must use 'cd {workspace} && ...' first.\n"
+                f"   If you use write_file, the path MUST start with: {workspace}/\n"
+                f"   WRONG: workspace/email_tool/parser.py\n"
+                f"   RIGHT: {workspace}/email_tool/parser.py\n"
                 "3. After completing each task, update the tasks file at "
                 f"`{tasks_full_path}` marking it [x].\n"
                 "4. When ALL tasks are complete, say DONE and list every file you created.\n"
             )
 
         result = self.call_agent(task=task_prompt, verbose=False)
+
+        # --- Post-run stray file rescue ---
+        # On cloud instances the root dir is /workspace/, so the LLM may create
+        # files at /workspace/workspace/<project>/ instead of the correct
+        # .pipeline/projects/<slug>/workspace/<project>/.
+        # Detect and move these files into the real workspace before reporting.
+        import shutil as _shutil
+        _stray_ws = workspace / "workspace"  # double-nesting: ws/workspace/
+        if _stray_ws.exists() and _stray_ws.is_dir():
+            _moved = 0
+            for _src in list(_stray_ws.rglob("*")):
+                if _src.is_file():
+                    _rel = _src.relative_to(_stray_ws)
+                    _dst = workspace / _rel
+                    _dst.parent.mkdir(parents=True, exist_ok=True)
+                    if not _dst.exists():
+                        _shutil.copy2(str(_src), str(_dst))
+                        _moved += 1
+            try:
+                _shutil.rmtree(str(_stray_ws))
+            except OSError:
+                pass
+            if _moved:
+                import logging as _log
+                _log.getLogger(__name__).warning(
+                    "[executor] Rescued %d file(s) from workspace/workspace/ double-nesting", _moved
+                )
 
         # Only report files created/changed during THIS call
         after_files = (
