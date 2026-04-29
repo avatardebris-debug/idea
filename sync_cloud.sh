@@ -1,70 +1,104 @@
 #!/usr/bin/env bash
-# sync_cloud.sh — Safe cloud sync: rescue stray files, pull latest code + restore tracked files
+# sync_cloud.sh — Cloud-side sync: rescue stray files + pull latest code
 # Usage: bash sync_cloud.sh
-set -e
+#
+# IMPORTANT: This script NEVER overwrites .pipeline/ state from git.
+# Cloud state is always treated as authoritative (it is newer).
 
-PIPELINE_DIR="/workspace/idea impl/.pipeline"
+set -euo pipefail
+
+# Paths — quote carefully, "idea impl" has a space
+PROJ_ROOT="/workspace/idea impl"
+PIPELINE_DIR="$PROJ_ROOT/.pipeline"
 STRAY_ROOT="/workspace/workspace"
 
 echo "=== Stopping any running pipeline ==="
 pkill -f "pipeline/runner.py" 2>/dev/null || true
 sleep 1
 
+echo ""
 echo "=== Rescuing stray files from /workspace/workspace/ ==="
-# Root cause: LLM writes 'workspace/' relative to cwd /workspace/ instead of
-# the absolute .pipeline path. This moves them to the correct location.
-if [ -d "$STRAY_ROOT" ]; then
+if [ ! -d "$STRAY_ROOT" ]; then
+    echo "  Nothing to rescue (/workspace/workspace/ does not exist)"
+else
+    found_any=0
     for stray_proj in "$STRAY_ROOT"/*/; do
         [ -d "$stray_proj" ] || continue
         slug=$(basename "$stray_proj")
-        target_ws="$PIPELINE_DIR/projects/$slug/workspace"
 
-        if [ ! -d "$PIPELINE_DIR/projects/$slug" ]; then
-            echo "  ⚠  No matching project for stray '$slug' — skipping"
+        # Skip meta dirs
+        case "$slug" in .pytest_cache|__pycache__|.ipynb_checkpoints) continue ;; esac
+
+        proj_dir="$PIPELINE_DIR/projects/$slug"
+        if [ ! -d "$proj_dir" ]; then
+            echo "  ⚠  No matching project for '$slug' — skipping"
             continue
         fi
 
-        echo "  Rescuing: /workspace/workspace/$slug → .pipeline/projects/$slug/workspace/"
+        target_ws="$proj_dir/workspace"
         mkdir -p "$target_ws"
+        echo "  Rescuing '$slug' → $target_ws"
+        found_any=1
 
-        # Move source files (skip __pycache__, .pytest_cache, phases/)
-        find "$stray_proj" -maxdepth 5 -type f \
+        # Copy all source files (skip caches and the stray phases/ subdir)
+        while IFS= read -r src; do
+            # Strip stray_proj prefix to get relative path
+            rel="${src#"$stray_proj"}"
+            dst="$target_ws/$rel"
+            dstdir=$(dirname "$dst")
+            mkdir -p "$dstdir"
+            if [ ! -f "$dst" ]; then
+                cp "$src" "$dst"
+                echo "    + $rel"
+            elif [ "$src" -nt "$dst" ]; then
+                cp "$src" "$dst"
+                echo "    ~ $rel  (cloud newer)"
+            fi
+        done < <(find "$stray_proj" -maxdepth 6 -type f \
             ! -path "*/__pycache__/*" \
             ! -path "*/.pytest_cache/*" \
-            ! -path "*/phases/*" \
-            | while IFS= read -r src; do
-                rel="${src#"$stray_proj"}"
-                dst="$target_ws/$rel"
-                if [ ! -f "$dst" ]; then
-                    mkdir -p "$(dirname "$dst")"
-                    cp "$src" "$dst"
-                    echo "    + $rel"
-                elif [ "$src" -nt "$dst" ]; then
-                    cp "$src" "$dst"
-                    echo "    ~ $rel (updated)"
-                fi
-            done
+            ! -path "*/.ipynb_checkpoints/*" \
+            ! -path "*/phases/*")
 
-        # Move phase reports (validation_report.md, review.md) to correct phases/ dir
-        if [ -d "${stray_proj}phases" ]; then
-            find "${stray_proj}phases" -type f | while IFS= read -r src; do
-                rel="${src#"${stray_proj}phases/"}"
-                dst="$PIPELINE_DIR/projects/$slug/phases/$rel"
+        # Copy phase reports (validation_report.md, review.md etc)
+        phases_stray="$stray_proj/phases"
+        if [ -d "$phases_stray" ]; then
+            while IFS= read -r src; do
+                rel="${src#"$phases_stray/"}"
+                dst="$proj_dir/phases/$rel"
+                dstdir=$(dirname "$dst")
+                mkdir -p "$dstdir"
                 if [ ! -f "$dst" ]; then
-                    mkdir -p "$(dirname "$dst")"
                     cp "$src" "$dst"
                     echo "    + phases/$rel"
                 fi
-            done
+            done < <(find "$phases_stray" -type f)
+        fi
+
+        # Also rescue files placed directly inside email_tool/phases inside the workspace
+        inner_phases="$stray_proj/$slug/phases"
+        if [ -d "$inner_phases" ]; then
+            while IFS= read -r src; do
+                rel="${src#"$inner_phases/"}"
+                dst="$proj_dir/phases/$rel"
+                dstdir=$(dirname "$dst")
+                mkdir -p "$dstdir"
+                if [ ! -f "$dst" ]; then
+                    cp "$src" "$dst"
+                    echo "    + phases/$rel  (from inner)"
+                fi
+            done < <(find "$inner_phases" -type f)
         fi
     done
-    echo "  Stray rescue complete."
-else
-    echo "  No /workspace/workspace/ found — nothing to rescue"
+
+    if [ "$found_any" -eq 0 ]; then
+        echo "  /workspace/workspace/ exists but no matching projects found"
+    fi
 fi
 
 echo ""
 echo "=== Clearing queue messages ==="
+cd "$PROJ_ROOT"
 python -c "
 from pipeline.message_bus import MessageBus
 from pipeline.runner import AGENT_ROLES
@@ -73,28 +107,34 @@ cleared = sum(bus.clear_queue(r) for r in AGENT_ROLES)
 print(f'  Cleared {cleared} messages')
 "
 
-echo "=== Pulling latest code ==="
+echo ""
+echo "=== Pulling latest CODE only (never overwrites .pipeline state) ==="
+cd "$PROJ_ROOT"
 git fetch origin
+# Merge only — never reset. .pipeline/ is gitignored for user-generated state.
 git merge origin/main --no-edit
 
-echo "=== Restoring ALL tracked pipeline files (safe, no delete) ==="
-git checkout HEAD -- .pipeline/ 2>/dev/null || true
-
+echo ""
 echo "=== Current project states ==="
 python -c "
 import json, pathlib
-projects = sorted(pathlib.Path('.pipeline/projects').glob('*/state/current_idea.json'))
-if not projects:
-    print('  (no projects)')
-for f in projects:
-    d = json.loads(f.read_text())
-    slug = f.parent.parent.name
-    st   = d.get('status','?')
-    ph   = d.get('phase','?')
-    tot  = d.get('total_phases','?')
-    ws   = f.parent.parent / 'workspace'
-    py   = [p for p in ws.rglob('*.py') if '__pycache__' not in str(p)] if ws.exists() else []
-    print(f'  {slug[:35]:35s} {st:30s} phase={ph}/{tot}  py={len(py)}')
+pipeline = pathlib.Path('.pipeline/projects')
+if not pipeline.exists():
+    print('  (no projects dir)')
+else:
+    projects = sorted(pipeline.glob('*/state/current_idea.json'))
+    if not projects:
+        print('  (no projects found)')
+    for f in projects:
+        d = json.loads(f.read_text())
+        slug = f.parent.parent.name
+        st   = d.get('status', '?')
+        ph   = d.get('phase', '?')
+        tot  = d.get('total_phases', '?')
+        ws   = f.parent.parent / 'workspace'
+        py   = [p for p in ws.rglob('*.py') if '__pycache__' not in str(p)] if ws.exists() else []
+        tests = [p for p in py if p.name.startswith('test_')]
+        print(f'  {slug[:38]:38s} {st:32s} phase={ph}/{tot}  src={len(py)-len(tests)}  tests={len(tests)}')
 "
 
 echo ""
