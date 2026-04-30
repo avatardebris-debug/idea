@@ -1,10 +1,10 @@
 {
   "title": "[udemy training tool]",
   "description": "[udemy training tool]",
-  "status": "complete",
-  "total_phases": 1,
+  "status": "phase_2_planning",
+  "total_phases": 3,
   "tasks_done": 6,
   "tasks_total": 6,
   "started_at": "2026-04-29T09:43:19.542685+00:00",
-  "phase": 1
+  "phase": 2
 }
