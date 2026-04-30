@@ -17,6 +17,14 @@ pkill -f "pipeline/runner.py" 2>/dev/null || true
 sleep 1
 
 echo ""
+echo "=== Snapshotting .pipeline/ state (safety backup before git) ==="
+# This protects master_plan.md and all state files from being lost
+# if git reset --hard is needed. Backup lives outside the git tree.
+BACKUP_DIR="/workspace/pipeline_backup_$(date +%Y%m%d_%H%M%S)"
+cp -r "$PIPELINE_DIR" "$BACKUP_DIR" 2>/dev/null && echo "  Backup: $BACKUP_DIR" || echo "  (backup skipped — .pipeline not found)"
+
+
+echo ""
 echo "=== Rescuing stray files from /workspace/workspace/ ==="
 if [ ! -d "$STRAY_ROOT" ]; then
     echo "  Nothing to rescue (/workspace/workspace/ does not exist)"
@@ -141,3 +149,8 @@ else:
 echo ""
 echo "=== Ready. Run: ==="
 echo "  python pipeline/runner.py --from-list --provider ollama --model qwen3.5:35b --time-limit 600"
+
+echo ""
+echo "=== Auto-repairing any missing master_plan.md files ==="
+cd "$PROJ_ROOT"
+python fix_missing_plans.py 2>/dev/null | grep -E "(plan created|state fixed|Done:)" || true
