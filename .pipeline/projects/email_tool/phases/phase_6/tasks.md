@@ -1,6 +1,6 @@
 # Phase 6 Tasks
 
-- [ ] Task 1: Enhance CLI with new subcommands and YAML config support
+- [x] Task 1: Enhance CLI with new subcommands and YAML config support
   - What: Update cli.py to support all required subcommands (init, scan, organize, sync, rules, summary, dry-run) and YAML configuration via ~/.email_tool/config.yaml
   - Files: email_tool/cli.py, email_tool/config.py (extend), email_tool/logging_config.py (create)
   - Done when: CLI has all 7 subcommands, loads config from YAML, supports --verbose/--debug flags, and can be invoked via `python -m email_tool`
@@ -10,7 +10,7 @@
   - Files: email_tool/daemon.py (create), examples/daemon_config.yaml (create)
   - Done when: Daemon can run in background, supports --interval flag, has systemd timer example, and can be started/stopped via CLI
 
-- [ ] Task 3: Create optional web dashboard with FastAPI
+- [x] Task 3: Create optional web dashboard with FastAPI
   - What: Build a simple web dashboard showing organization stats, recent activity, and system health metrics
   - Files: email_tool/dashboard/__init__.py (create), email_tool/dashboard/app.py (create), email_tool/dashboard/templates/index.html (create)
   - Done when: Dashboard runs on configurable port, shows email counts by category, recent processing activity, and rule match statistics
