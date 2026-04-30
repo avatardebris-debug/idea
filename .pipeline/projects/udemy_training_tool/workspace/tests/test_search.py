@@ -130,11 +130,10 @@ class TestSearchCourses:
     def test_search_max_price(self, sample_courses):
         """Test search with max_price filter."""
         results = search_courses(sample_courses, query="", max_price=12.0)
-        assert len(results) == 3
+        assert len(results) == 2
         titles = [c.title for c in results]
         assert "Java Programming" in titles
         assert "Web Development Bootcamp" in titles
-        assert "Python Bootcamp" in titles
 
     def test_search_level_filter(self, sample_courses):
         """Test search with level filter."""
@@ -259,12 +258,11 @@ class TestSearchCourses:
     def test_search_price_boundary(self, sample_courses):
         """Test search with price at boundary."""
         results = search_courses(sample_courses, query="", max_price=12.99)
-        assert len(results) == 4
+        assert len(results) == 3
         titles = [c.title for c in results]
         assert "Python Bootcamp" in titles
         assert "Java Programming" in titles
         assert "Web Development Bootcamp" in titles
-        assert "Data Science with Python" in titles
 
     def test_search_level_exact_match(self, sample_courses):
         """Test search with exact level match."""

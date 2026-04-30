@@ -3,11 +3,12 @@
   "version": "1.0.0",
   "description": "VR Practice Mode for Thronglets - A virtual reality simulation environment for monitoring and managing Thronglets",
   "main": "vr_practice.js",
+  "type": "module",
   "scripts": {
-    "test": "node vr_practice_runner.js",
-    "test:watch": "node vr_practice_runner.js --watch",
-    "test:verbose": "node vr_practice_runner.js --verbose",
-    "test:coverage": "node vr_practice_runner.js --coverage",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:verbose": "vitest run --reporter=verbose",
+    "test:coverage": "vitest run --coverage",
     "start": "node vr_practice.js",
     "dev": "node vr_practice.js --dev"
   },
@@ -22,7 +23,10 @@
   "author": "Thronglets Team",
   "license": "MIT",
   "dependencies": {},
-  "devDependencies": {},
+  "devDependencies": {
+    "vitest": "^1.0.0",
+    "@vitest/coverage-v8": "^1.0.0"
+  },
   "engines": {
     "node": ">=14.0.0"
   }

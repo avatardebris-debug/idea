@@ -4,5 +4,6 @@
   "status": "phase_1_executing",
   "total_phases": 6,
   "tasks_done": 0,
-  "tasks_total": 0
+  "tasks_total": 0,
+  "phase": 1
 }

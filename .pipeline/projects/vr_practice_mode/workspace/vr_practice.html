@@ -158,6 +158,142 @@
       padding: 2px 6px; border-radius: 4px;
       font-family: monospace; font-size: 0.8rem;
     }
+
+    /* VR Keyboard */
+    .vr-keyboard {
+      position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%) translateY(150px);
+      background: rgba(15, 15, 35, 0.95);
+      color: #e0e0e0;
+      padding: 20px;
+      border-radius: 16px;
+      border: 1px solid rgba(79, 195, 247, 0.3);
+      backdrop-filter: blur(12px);
+      box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+      transform: translateX(-50%) translateY(150px);
+      transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+      z-index: 200;
+      pointer-events: none;
+      width: 400px;
+    }
+    .vr-keyboard.visible {
+      transform: translateX(-50%) translateY(0);
+      pointer-events: auto;
+    }
+    .vr-keyboard .keyboard-header {
+      display: flex; align-items: center; justify-content: space-between;
+      margin-bottom: 16px; padding-bottom: 12px;
+      border-bottom: 1px solid rgba(79, 195, 247, 0.2);
+    }
+    .vr-keyboard .keyboard-header span {
+      font-size: 0.9rem; color: #9e9e9e;
+    }
+    .vr-keyboard .keyboard-close {
+      background: none; border: none;
+      color: #f44336; font-size: 1.5rem;
+      cursor: pointer; padding: 0 8px;
+    }
+    .vr-keyboard .keyboard-body {
+      display: flex; flex-direction: column; gap: 12px;
+    }
+    .vr-keyboard .keyboard-input {
+      background: rgba(255, 255, 255, 0.05);
+      border: 1px solid rgba(79, 195, 247, 0.3);
+      border-radius: 8px;
+      padding: 12px;
+      color: #ffffff;
+      font-size: 1rem;
+      outline: none;
+      width: 100%;
+      box-sizing: border-box;
+    }
+    .vr-keyboard .keyboard-input:focus {
+      border-color: #4fc3f7;
+      box-shadow: 0 0 10px rgba(79, 195, 247, 0.2);
+    }
+    .vr-keyboard .keyboard-buttons {
+      display: flex; gap: 12px;
+    }
+    .vr-keyboard .keyboard-btn {
+      flex: 1;
+      background: rgba(79, 195, 247, 0.2);
+      border: 1px solid rgba(79, 195, 247, 0.3);
+      border-radius: 8px;
+      padding: 10px;
+      color: #ffffff;
+      font-size: 0.9rem;
+      cursor: pointer;
+      transition: background 0.2s ease;
+    }
+    .vr-keyboard .keyboard-btn:hover {
+      background: rgba(79, 195, 247, 0.3);
+    }
+
+    /* Debug Panel */
+    .debug-panel {
+      position: fixed; top: 20px; right: 20px;
+      width: 280px;
+      background: rgba(15, 15, 35, 0.95);
+      color: #e0e0e0;
+      padding: 20px;
+      border-radius: 16px;
+      border: 1px solid rgba(79, 195, 247, 0.3);
+      backdrop-filter: blur(12px);
+      box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+      transform: translateX(320px);
+      transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+      z-index: 200;
+      pointer-events: none;
+    }
+    .debug-panel.visible {
+      transform: translateX(0);
+      pointer-events: auto;
+    }
+    .debug-panel .debug-header {
+      display: flex; align-items: center; justify-content: space-between;
+      margin-bottom: 16px; padding-bottom: 12px;
+      border-bottom: 1px solid rgba(79, 195, 247, 0.2);
+    }
+    .debug-panel .debug-header h3 {
+      margin: 0; font-size: 1rem; color: #4fc3f7;
+    }
+    .debug-panel .debug-close {
+      background: none; border: none;
+      color: #f44336; font-size: 1.5rem;
+      cursor: pointer; padding: 0 8px;
+    }
+    .debug-panel .debug-body {
+      display: flex; flex-direction: column; gap: 12px;
+    }
+    .debug-panel .debug-row {
+      display: flex; justify-content: space-between; align-items: center;
+      padding: 8px 0;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+    }
+    .debug-panel .debug-label {
+      color: #9e9e9e; font-size: 0.85rem;
+    }
+    .debug-panel .debug-value {
+      color: #4fc3f7; font-size: 0.85rem; font-weight: 500;
+    }
+
+    /* VR Indicator */
+    .vr-indicator {
+      position: fixed; top: 20px; left: 50%; transform: translateX(-50%);
+      background: rgba(79, 195, 247, 0.2);
+      color: #4fc3f7;
+      padding: 8px 16px;
+      border-radius: 20px;
+      font-size: 0.85rem;
+      font-weight: 500;
+      backdrop-filter: blur(8px);
+      border: 1px solid rgba(79, 195, 247, 0.3);
+      opacity: 0;
+      transition: opacity 0.3s ease;
+      z-index: 100;
+    }
+    .vr-indicator.visible {
+      opacity: 1;
+    }
   </style>
 </head>
 <body>
@@ -189,30 +325,30 @@
     <div class="panel-header">
       <div class="avatar-icon" id="panel-avatar-icon">🤖</div>
       <div>
-        <h2 id="panel-name">Unknown</h2>
-        <div class="role" id="panel-role">Unknown Role</div>
+        <h2 id="detail-title">Unknown</h2>
+        <div class="role" id="detail-role">Unknown Role</div>
       </div>
     </div>
     <div class="panel-body">
       <div class="stat-row">
         <span class="stat-label">Health</span>
-        <span class="stat-value" id="panel-health">Unknown</span>
+        <span class="stat-value" id="detail-health">Unknown</span>
       </div>
       <div class="stat-row">
-        <span class="stat-label">Role</span>
-        <span class="stat-value info" id="panel-role-detail">Unknown</span>
+        <span class="stat-label">Mood</span>
+        <span class="stat-value" id="detail-mood">Unknown</span>
+      </div>
+      <div class="stat-row">
+        <span class="stat-label">Tokens</span>
+        <span class="stat-value" id="detail-tokens">0</span>
       </div>
       <div class="stat-row">
         <span class="stat-label">Uptime</span>
-        <span class="stat-value" id="panel-uptime">N/A</span>
+        <span class="stat-value" id="detail-uptime">N/A</span>
       </div>
       <div class="stat-row">
         <span class="stat-label">Last Seen</span>
-        <span class="stat-value" id="panel-last-seen">N/A</span>
-      </div>
-      <div class="stat-row">
-        <span class="stat-label">Location</span>
-        <span class="stat-value" id="panel-location">(0, 0)</span>
+        <span class="stat-value" id="detail-last-seen">N/A</span>
       </div>
     </div>
   </div>
@@ -261,7 +397,146 @@
   </a-scene>
 
   <!-- VR Practice Script -->
-  <script src="vr_practice.js"></script>
+  <script src="vr_practice_mode.js"></script>
+
+  <!-- Control Buttons -->
+  <div id="control-buttons" style="position: fixed; bottom: 20px; left: 20px; z-index: 100;">
+    <button id="toggle-nameplates" class="control-btn" onclick="toggleNameplatesVisibility()">Nameplates</button>
+    <button id="toggle-connections" class="control-btn" onclick="toggleConnectionsVisibility()">Connections</button>
+    <button id="toggle-health" class="control-btn" onclick="toggleHealthHalosVisibility()">Health</button>
+    <button id="toggle-enhanced-connections" class="control-btn" onclick="toggleEnhancedConnectionsVisibility()">Enhanced</button>
+    <button id="toggle-debug" class="control-btn" onclick="toggleDebugMode()">Debug</button>
+  </div>
+
+  <style>
+    .control-btn {
+      background: rgba(79, 195, 247, 0.2);
+      border: 1px solid rgba(79, 195, 247, 0.3);
+      border-radius: 8px;
+      padding: 8px 16px;
+      color: #ffffff;
+      font-size: 0.85rem;
+      cursor: pointer;
+      margin-right: 8px;
+      margin-bottom: 8px;
+      transition: background 0.2s ease;
+    }
+    .control-btn:hover {
+      background: rgba(79, 195, 247, 0.3);
+    }
+    .control-btn.active {
+      background: rgba(79, 195, 247, 0.4);
+      border-color: #4fc3f7;
+    }
+  </style>
+
+  <!-- VR Keyboard -->
+  <div id="vr-keyboard" class="vr-keyboard">
+    <div class="keyboard-header">
+      <span>Type a prompt for <span id="keyboard-thronglet-name"></span></span>
+      <button class="keyboard-close">×</button>
+    </div>
+    <div class="keyboard-body">
+      <input type="text" placeholder="Enter your prompt..." class="keyboard-input" id="keyboard-input">
+      <div class="keyboard-buttons">
+        <button class="keyboard-btn" data-action="send">Send</button>
+        <button class="keyboard-btn" data-action="cancel">Cancel</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Debug Panel -->
+  <div id="debug-panel" class="debug-panel">
+    <div class="debug-header">
+      <h3>Debug Panel</h3>
+      <button class="debug-close">×</button>
+    </div>
+    <div class="debug-body">
+      <div class="debug-row">
+        <span class="debug-label">Thronglets:</span>
+        <span class="debug-value" id="debug-thronglet-count">0</span>
+      </div>
+      <div class="debug-row">
+        <span class="debug-label">Connections:</span>
+        <span class="debug-value" id="debug-connection-count">0</span>
+      </div>
+      <div class="debug-row">
+        <span class="debug-label">Selected:</span>
+        <span class="debug-value" id="debug-selected">None</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- VR Indicator -->
+  <div id="vr-indicator" class="vr-indicator">
+    <span>VR Mode Active</span>
+  </div>
+
+  <!-- Helper Functions -->
+  <script>
+    // Control button state
+    let nameplatesVisible = true;
+    let connectionsVisible = true;
+    let healthHalosVisible = true;
+    let enhancedConnectionsVisible = false;
+    let debugModeEnabled = false;
+
+    function toggleNameplatesVisibility() {
+      nameplatesVisible = !nameplatesVisible;
+      document.querySelectorAll('.thronglet-avatar').forEach(el => {
+        el.setAttribute('data-nameplates-visible', nameplatesVisible);
+      });
+      updateButtonState('toggle-nameplates');
+    }
+
+    function toggleConnectionsVisibility() {
+      connectionsVisible = !connectionsVisible;
+      document.querySelectorAll('.connection-line').forEach(el => {
+        el.setAttribute('data-connections-visible', connectionsVisible);
+      });
+      updateButtonState('toggle-connections');
+    }
+
+    function toggleHealthHalosVisibility() {
+      healthHalosVisible = !healthHalosVisible;
+      document.querySelectorAll('.health-halo').forEach(el => {
+        el.setAttribute('data-health-visible', healthHalosVisible);
+      });
+      updateButtonState('toggle-health');
+    }
+
+    function toggleEnhancedConnectionsVisibility() {
+      enhancedConnectionsVisible = !enhancedConnectionsVisible;
+      document.querySelectorAll('.connection-line').forEach(el => {
+        el.setAttribute('data-enhanced-connections', enhancedConnectionsVisible);
+      });
+      updateButtonState('toggle-enhanced-connections');
+    }
+
+    function toggleDebugMode() {
+      debugModeEnabled = !debugModeEnabled;
+      const debugPanel = document.getElementById('debug-panel');
+      if (debugPanel) {
+        debugPanel.classList.toggle('visible', debugModeEnabled);
+      }
+      updateButtonState('toggle-debug');
+    }
+
+    function updateButtonState(buttonId) {
+      const btn = document.getElementById(buttonId);
+      if (btn) {
+        btn.classList.toggle('active', btn.classList.contains('active') === false);
+      }
+    }
+
+    // Keyboard shortcuts
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'n') toggleNameplatesVisibility();
+      if (e.key === 'c') toggleConnectionsVisibility();
+      if (e.key === 'h') toggleHealthHalosVisibility();
+      if (e.key === 'd') toggleDebugMode();
+    });
+  </script>
 
 </body>
 </html>

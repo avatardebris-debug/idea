@@ -2,5 +2,6 @@
   "title": "JSON Diff Tool",
   "description": "Build a Python CLI that compares two JSON files and prints a human-readable diff showing added, removed, and changed keys/values. Handle nested objects and arrays. Include unit tests covering edge cases.",
   "status": "phase_1_executing",
-  "total_phases": 1
+  "total_phases": 1,
+  "phase": 1
 }

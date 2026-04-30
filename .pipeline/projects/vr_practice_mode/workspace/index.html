@@ -3,17 +3,10 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <meta name="description" content="Thronglets VR Practice Mode - Interactive 3D visualization and simulation environment">
   <title>Thronglets VR Practice Mode</title>
-  
-  <!-- A-Frame VR Framework -->
   <script src="https://aframe.io/releases/1.4.0/aframe.min.js"></script>
-  
-  <!-- A-Frame Extras for additional components -->
   <script src="https://unpkg.com/aframe-environment-component@1.3.2/dist/aframe-environment-component.min.js"></script>
-  <script src="https://unpkg.com/aframe-extras@7.2.0/dist/aframe-extras.min.js"></script>
-  
-  <!-- Custom Styles -->
+  <script src="https://cdn.jsdelivr.net/npm/three@0.150.0/build/three.min.js"></script>
   <style>
     * {
       margin: 0;
@@ -22,287 +15,432 @@
     }
 
     body {
-      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
       overflow: hidden;
-      background: #000;
+      background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+      color: #ffffff;
     }
 
-    /* Loading Screen */
-    #loading-screen {
+    #vr-scene {
+      width: 100vw;
+      height: 100vh;
       position: fixed;
       top: 0;
       left: 0;
+      z-index: 1;
+    }
+
+    /* UI Overlay */
+    .ui-overlay {
+      position: fixed;
+      z-index: 100;
+      pointer-events: none;
+    }
+
+    /* Top Bar */
+    .top-bar {
+      top: 0;
+      left: 0;
+      right: 0;
+      height: 60px;
+      background: rgba(26, 26, 46, 0.9);
+      backdrop-filter: blur(10px);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 20px;
+      pointer-events: auto;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+    }
+
+    .logo {
+      font-size: 24px;
+      font-weight: bold;
+      color: #4fc3f7;
+    }
+
+    .logo span {
+      color: #81c784;
+    }
+
+    .controls {
+      display: flex;
+      gap: 10px;
+    }
+
+    .control-btn {
+      background: rgba(255, 255, 255, 0.1);
+      border: 1px solid rgba(255, 255, 255, 0.2);
+      color: white;
+      padding: 8px 16px;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 14px;
+      transition: all 0.3s ease;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .control-btn:hover {
+      background: rgba(255, 255, 255, 0.2);
+      transform: translateY(-2px);
+    }
+
+    .control-btn.active {
+      background: #4fc3f7;
+      border-color: #4fc3f7;
+    }
+
+    /* Detail Panel */
+    .detail-panel {
+      position: fixed;
+      right: -400px;
+      top: 80px;
+      width: 350px;
+      background: rgba(26, 26, 46, 0.95);
+      backdrop-filter: blur(10px);
+      border-radius: 12px;
+      padding: 24px;
+      box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+      transition: right 0.3s ease;
+      pointer-events: auto;
+      border: 1px solid rgba(255, 255, 255, 0.1);
+    }
+
+    .detail-panel.visible {
+      right: 20px;
+    }
+
+    .detail-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      margin-bottom: 20px;
+    }
+
+    .detail-title {
+      font-size: 20px;
+      font-weight: bold;
+      color: #4fc3f7;
+      margin: 0;
+    }
+
+    .close-btn {
+      background: none;
+      border: none;
+      color: #9e9e9e;
+      font-size: 24px;
+      cursor: pointer;
+      padding: 0;
+      line-height: 1;
+    }
+
+    .close-btn:hover {
+      color: #ffffff;
+    }
+
+    .detail-row {
+      margin-bottom: 16px;
+    }
+
+    .detail-label {
+      font-size: 12px;
+      color: #9e9e9e;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      margin-bottom: 4px;
+    }
+
+    .detail-value {
+      font-size: 16px;
+      color: #ffffff;
+    }
+
+    .detail-value.health {
+      font-weight: bold;
+    }
+
+    .detail-value.mood {
+      font-style: italic;
+      color: #b39ddb;
+    }
+
+    /* Proximity Alert */
+    .proximity-alert {
+      position: fixed;
+      top: 100px;
+      left: 50%;
+      transform: translateX(-50%);
+      background: rgba(229, 115, 115, 0.95);
+      color: white;
+      padding: 16px 32px;
+      border-radius: 8px;
+      font-weight: bold;
+      box-shadow: 0 4px 20px rgba(229, 115, 115, 0.4);
+      opacity: 0;
+      transition: opacity 0.3s ease;
+      pointer-events: none;
+    }
+
+    .proximity-alert.visible {
+      opacity: 1;
+    }
+
+    /* VR Indicator */
+    .vr-indicator {
+      position: fixed;
+      bottom: 20px;
+      left: 50%;
+      transform: translateX(-50%);
+      background: rgba(79, 195, 247, 0.9);
+      color: white;
+      padding: 12px 24px;
+      border-radius: 8px;
+      font-weight: bold;
+      opacity: 0;
+      transition: opacity 0.3s ease;
+      pointer-events: none;
+    }
+
+    .vr-indicator.visible {
+      opacity: 1;
+    }
+
+    /* Debug Panel */
+    .debug-panel {
+      position: fixed;
+      bottom: 20px;
+      left: 20px;
+      background: rgba(0, 0, 0, 0.8);
+      backdrop-filter: blur(10px);
+      border-radius: 8px;
+      padding: 16px;
+      font-family: 'Courier New', monospace;
+      font-size: 12px;
+      color: #81c784;
+      display: none;
+      pointer-events: auto;
+      border: 1px solid rgba(129, 199, 132, 0.3);
+    }
+
+    .debug-panel.visible {
+      display: block;
+    }
+
+    .debug-row {
+      margin-bottom: 8px;
+    }
+
+    .debug-label {
+      color: #81c784;
+    }
+
+    .debug-value {
+      color: #ffffff;
+    }
+
+    /* Keyboard Help */
+    .keyboard-help {
+      position: fixed;
+      bottom: 20px;
+      right: 20px;
+      background: rgba(26, 26, 46, 0.9);
+      backdrop-filter: blur(10px);
+      border-radius: 8px;
+      padding: 16px;
+      font-size: 12px;
+      color: #9e9e9e;
+      pointer-events: auto;
+      border: 1px solid rgba(255, 255, 255, 0.1);
+    }
+
+    .keyboard-help h4 {
+      color: #4fc3f7;
+      margin-bottom: 8px;
+    }
+
+    .keyboard-help kbd {
+      background: rgba(255, 255, 255, 0.1);
+      padding: 2px 6px;
+      border-radius: 4px;
+      font-family: 'Courier New', monospace;
+      color: #ffffff;
+    }
+
+    /* VR Keyboard */
+    .vr-keyboard {
+      position: fixed;
+      bottom: 100px;
+      left: 50%;
+      transform: translateX(-50%) translateY(200%);
+      background: rgba(26, 26, 46, 0.98);
+      backdrop-filter: blur(20px);
+      border-radius: 16px;
+      padding: 24px;
+      box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
+      transition: transform 0.3s ease;
+      pointer-events: auto;
+      border: 1px solid rgba(79, 195, 247, 0.3);
+      z-index: 200;
+      width: 90%;
+      max-width: 500px;
+    }
+
+    .vr-keyboard.visible {
+      transform: translateX(-50%) translateY(0);
+    }
+
+    .keyboard-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 16px;
+      padding-bottom: 12px;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+    }
+
+    .keyboard-header span {
+      font-size: 16px;
+      font-weight: bold;
+      color: #4fc3f7;
+    }
+
+    .keyboard-close {
+      background: none;
+      border: none;
+      color: #9e9e9e;
+      font-size: 28px;
+      cursor: pointer;
+      padding: 0;
+      line-height: 1;
+      transition: color 0.3s ease;
+    }
+
+    .keyboard-close:hover {
+      color: #ffffff;
+    }
+
+    .keyboard-body {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+
+    #vr-keyboard-input {
       width: 100%;
-      height: 100%;
+      background: rgba(255, 255, 255, 0.05);
+      border: 1px solid rgba(79, 195, 247, 0.3);
+      border-radius: 8px;
+      padding: 12px;
+      color: #ffffff;
+      font-size: 14px;
+      font-family: inherit;
+      resize: vertical;
+      min-height: 80px;
+      transition: border-color 0.3s ease;
+    }
+
+    #vr-keyboard-input:focus {
+      outline: none;
+      border-color: #4fc3f7;
+      box-shadow: 0 0 0 2px rgba(79, 195, 247, 0.2);
+    }
+
+    #vr-keyboard-input::placeholder {
+      color: #9e9e9e;
+    }
+
+    .keyboard-buttons {
+      display: flex;
+      gap: 12px;
+      justify-content: flex-end;
+    }
+
+    .keyboard-send-btn,
+    .keyboard-cancel-btn {
+      padding: 10px 20px;
+      border-radius: 8px;
+      font-size: 14px;
+      font-weight: bold;
+      cursor: pointer;
+      transition: all 0.3s ease;
+      border: none;
+    }
+
+    .keyboard-send-btn {
+      background: #4fc3f7;
+      color: #1a1a2e;
+    }
+
+    .keyboard-send-btn:hover {
+      background: #29b6f6;
+      transform: translateY(-2px);
+    }
+
+    .keyboard-cancel-btn {
+      background: rgba(255, 255, 255, 0.1);
+      color: #ffffff;
+      border: 1px solid rgba(255, 255, 255, 0.2);
+    }
+
+    .keyboard-cancel-btn:hover {
+      background: rgba(255, 255, 255, 0.2);
+    }
+
+    /* Loading Screen */
+    .loading-screen {
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
       background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
       display: flex;
       flex-direction: column;
-      justify-content: center;
       align-items: center;
-      z-index: 9999;
-      color: #fff;
+      justify-content: center;
+      z-index: 1000;
+      transition: opacity 0.5s ease;
+    }
+
+    .loading-screen.hidden {
+      opacity: 0;
+      pointer-events: none;
     }
 
     .loading-spinner {
       width: 60px;
       height: 60px;
-      border: 4px solid #f3f3f3;
-      border-top: 4px solid #4fc3f7;
+      border: 4px solid rgba(79, 195, 247, 0.3);
+      border-top-color: #4fc3f7;
       border-radius: 50%;
       animation: spin 1s linear infinite;
       margin-bottom: 20px;
     }
 
     @keyframes spin {
-      0% { transform: rotate(0deg); }
-      100% { transform: rotate(360deg); }
+      to { transform: rotate(360deg); }
     }
 
     .loading-text {
-      font-size: 1.5rem;
-      font-weight: 600;
-      margin-bottom: 10px;
+      font-size: 18px;
+      color: #4fc3f7;
     }
 
-    .loading-subtext {
-      font-size: 1rem;
-      color: #aaa;
-    }
-
-    /* Detail Panel */
-    #detail-panel {
-      position: fixed;
-      right: 20px;
-      top: 20px;
-      width: 320px;
-      background: rgba(26, 26, 46, 0.95);
-      backdrop-filter: blur(10px);
-      border-radius: 12px;
-      padding: 20px;
-      color: #fff;
-      box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
-      transform: translateX(400px);
-      transition: transform 0.3s ease;
-      z-index: 1000;
-    }
-
-    #detail-panel.visible {
-      transform: translateX(0);
-    }
-
-    #detail-panel h2 {
-      font-size: 1.4rem;
-      margin-bottom: 15px;
-      border-bottom: 2px solid #4fc3f7;
-      padding-bottom: 10px;
-    }
-
-    #detail-panel .info-row {
-      margin-bottom: 12px;
-      display: flex;
-      align-items: center;
-    }
-
-    #detail-panel .info-label {
-      font-size: 0.9rem;
-      color: #aaa;
-      width: 100px;
-    }
-
-    #detail-panel .info-value {
-      font-size: 1rem;
-      font-weight: 500;
-      flex: 1;
-    }
-
-    #detail-panel .health-badge {
-      display: inline-block;
-      padding: 4px 12px;
-      border-radius: 20px;
-      font-size: 0.85rem;
-      font-weight: 600;
-      text-transform: uppercase;
-    }
-
-    #detail-panel .close-btn {
-      position: absolute;
-      top: 15px;
-      right: 15px;
-      background: none;
-      border: none;
-      color: #aaa;
-      font-size: 1.5rem;
-      cursor: pointer;
-      transition: color 0.2s;
-    }
-
-    #detail-panel .close-btn:hover {
-      color: #fff;
-    }
-
-    /* Proximity Alert */
-    #proximity-alert {
-      position: fixed;
-      top: 20px;
-      left: 50%;
-      transform: translateX(-50%) translateY(-100px);
-      background: rgba(244, 67, 54, 0.95);
-      backdrop-filter: blur(10px);
-      border-radius: 12px;
-      padding: 15px 25px;
-      color: #fff;
-      box-shadow: 0 8px 32px rgba(244, 67, 54, 0.3);
-      transition: transform 0.3s ease;
-      z-index: 1001;
-      display: flex;
-      align-items: center;
-      gap: 10px;
-    }
-
-    #proximity-alert.visible {
-      transform: translateX(-50%) translateY(0);
-    }
-
-    #proximity-alert .alert-icon {
-      font-size: 1.5rem;
-    }
-
-    #proximity-alert .alert-text {
-      font-weight: 600;
-    }
-
-    /* Control Panel */
-    #control-panel {
-      position: fixed;
-      bottom: 20px;
-      left: 50%;
-      transform: translateX(-50%);
-      background: rgba(26, 26, 46, 0.95);
-      backdrop-filter: blur(10px);
-      border-radius: 12px;
-      padding: 15px 25px;
-      color: #fff;
-      box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
-      z-index: 1000;
-      display: flex;
-      gap: 15px;
-      align-items: center;
-    }
-
-    #control-panel button {
-      background: #4fc3f7;
-      border: none;
-      padding: 10px 20px;
-      border-radius: 8px;
-      color: #fff;
-      font-weight: 600;
-      cursor: pointer;
-      transition: background 0.2s;
-    }
-
-    #control-panel button:hover {
-      background: #29b6f6;
-    }
-
-    #control-panel button.active {
-      background: #29b6f6;
-      box-shadow: 0 0 10px rgba(79, 195, 247, 0.5);
-    }
-
-    /* Keyboard Shortcuts Help */
-    #keyboard-help {
-      position: fixed;
-      bottom: 20px;
-      right: 20px;
-      background: rgba(26, 26, 46, 0.95);
-      backdrop-filter: blur(10px);
-      border-radius: 12px;
-      padding: 15px 20px;
-      color: #fff;
-      font-size: 0.85rem;
-      box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
-      z-index: 1000;
-      max-width: 250px;
-    }
-
-    #keyboard-help h3 {
-      font-size: 1rem;
-      margin-bottom: 10px;
-      border-bottom: 1px solid #444;
-      padding-bottom: 5px;
-    }
-
-    #keyboard-help .shortcut {
-      display: flex;
-      justify-content: space-between;
-      margin-bottom: 5px;
-    }
-
-    #keyboard-help .key {
-      background: #333;
-      padding: 2px 8px;
-      border-radius: 4px;
-      font-family: monospace;
-    }
-
-    /* Debug Panel */
-    #debug-panel {
-      position: fixed;
-      top: 20px;
-      left: 20px;
-      background: rgba(0, 0, 0, 0.8);
-      backdrop-filter: blur(10px);
-      border-radius: 8px;
-      padding: 15px;
-      color: #0f0;
-      font-family: monospace;
-      font-size: 0.8rem;
-      z-index: 1000;
-      display: none;
-    }
-
-    #debug-panel.visible {
-      display: block;
-    }
-
-    /* VR Mode Indicator */
-    #vr-indicator {
-      position: fixed;
-      top: 20px;
-      right: 20px;
-      background: rgba(79, 195, 247, 0.95);
-      backdrop-filter: blur(10px);
-      border-radius: 8px;
-      padding: 10px 15px;
-      color: #fff;
-      font-weight: 600;
-      z-index: 1000;
-      display: none;
-    }
-
-    #vr-indicator.visible {
-      display: block;
-    }
-
-    /* Responsive Design */
+    /* Responsive */
     @media (max-width: 768px) {
-      #detail-panel {
-        width: calc(100% - 40px);
-        right: 20px;
-        left: 20px;
-        transform: translateY(100%);
+      .detail-panel {
+        width: 100%;
+        right: -100%;
       }
 
-      #detail-panel.visible {
-        transform: translateY(0);
+      .controls {
+        flex-wrap: wrap;
+        justify-content: center;
       }
 
-      #control-panel {
-        flex-direction: column;
-        gap: 10px;
-      }
-
-      #keyboard-help {
+      .keyboard-help {
         display: none;
       }
     }
@@ -310,283 +448,200 @@
 </head>
 <body>
   <!-- Loading Screen -->
-  <div id="loading-screen">
+  <div class="loading-screen" id="loading-screen">
     <div class="loading-spinner"></div>
-    <div class="loading-text">Loading Thronglets VR</div>
-    <div class="loading-subtext">Initializing simulation environment...</div>
+    <div class="loading-text">Loading VR Practice Mode...</div>
   </div>
 
-  <!-- A-Frame Scene -->
-  <a-scene
-    id="vr-scene"
-    embedded
-    loading-screen="enabled: false"
-    renderer="antialias: true; colorManagement: true; logarithmicDepthBuffer: true"
-    vr-mode-ui="enabled: false"
-    physics="debug: false">
-    
-    <!-- Assets -->
-    <a-assets>
-      <img id="grid-texture" src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='100' height='100' viewBox='0 0 100 100'%3E%3Cpath d='M0 50 L100 50 M50 0 L50 100' stroke='%23444' stroke-width='1' fill='none'/%3E%3C/svg%3E" crossorigin="anonymous">
-    </a-assets>
-
-    <!-- Camera and Controls -->
-    <a-entity id="rig" position="0 1.6 0">
-      <a-camera look-controls="pointerLockEnabled: true" wasd-controls="enabled: true">
-        <a-cursor
-          id="cursor"
-          color="#4fc3f7"
-          fuse="true"
-          fuse-timeout="1000"
-          raycaster="objects: .selectable; far: 10"
-          animation__click="property: scale; startEvents: click; from: 0.1 0.1 0.1; to: 1 1 1; dur: 150"
-          animation__fusing="property: scale; startEvents: fusing; from: 1 1 1; to: 0.1 0.1 0.1; dur: 1000"
-          animation__mouseleave="property: color; startEvents: mouseleave; from: #4fc3f7; to: #ff0000; dur: 1000">
-        </a-cursor>
-      </a-camera>
-    </a-entity>
-
-    <!-- Lighting -->
-    <a-entity light="type: ambient; color: #ffffff; intensity: 0.5"></a-entity>
-    <a-entity light="type: directional; color: #ffffff; intensity: 1.0" position="-1 2 1"></a-entity>
-    <a-entity light="type: point; color: #4fc3f7; intensity: 0.5; distance: 20" position="0 5 0"></a-entity>
+  <!-- VR Scene -->
+  <a-scene id="vr-scene" environment="preset: forest; skyType: atmosphere; lighting: point">
+    <!-- Camera -->
+    <a-camera position="0 1.6 0" look-controls="enabled: false">
+      <a-cursor
+        color="#4fc3f7"
+        fuse="true"
+        fuse-timeout="1000"
+        raycaster="objects: .clickable">
+      </a-cursor>
+    </a-camera>
 
     <!-- Environment -->
-    <a-plane
-      id="ground"
-      rotation="-90 0 0"
-      width="40"
-      height="40"
-      src="#grid-texture"
-      repeat="40 40"
-      color="#2a2a4e">
-    </a-plane>
+    <a-entity environment="preset: forest"></a-entity>
 
-    <!-- Thronglet Container -->
-    <a-entity id="thronglets-container"></a-entity>
+    <!-- Thronglets Manager -->
+    <a-entity id="thronglets-container" thronglet-manager></a-entity>
 
-    <!-- Connection Lines Container -->
+    <!-- Connections Manager -->
     <a-entity id="connections-container"></a-entity>
 
-    <!-- UI Elements -->
-    <a-entity id="ui-layer" position="0 0 0">
-      <!-- Detail Panel -->
-      <div id="detail-panel">
-        <button class="close-btn" onclick="closeDetailPanel()">&times;</button>
-        <h2 id="panel-title">Thronglet Details</h2>
-        <div id="panel-content">
-          <div class="info-row">
-            <span class="info-label">Name:</span>
-            <span class="info-value" id="panel-name">-</span>
-          </div>
-          <div class="info-row">
-            <span class="info-label">Role:</span>
-            <span class="info-value" id="panel-role">-</span>
-          </div>
-          <div class="info-row">
-            <span class="info-label">Health:</span>
-            <span class="info-value">
-              <span class="health-badge" id="panel-health">-</span>
-            </span>
-          </div>
-          <div class="info-row">
-            <span class="info-label">Mood:</span>
-            <span class="info-value" id="panel-mood">-</span>
-          </div>
-          <div class="info-row">
-            <span class="info-label">Token Count:</span>
-            <span class="info-value" id="panel-tokens">-</span>
-          </div>
-          <div class="info-row">
-            <span class="info-label">Position:</span>
-            <span class="info-value" id="panel-position">-</span>
-          </div>
-        </div>
-      </div>
+    <!-- Ground -->
+    <a-plane
+      rotation="-90 0 0"
+      width="100"
+      height="100"
+      material="color: #2d2d44; shader: flat; transparent: true; opacity: 0.5">
+    </a-plane>
 
-      <!-- Proximity Alert -->
-      <div id="proximity-alert">
-        <span class="alert-icon">⚠️</span>
-        <span class="alert-text" id="alert-text">Critical Thronglet Detected!</span>
-      </div>
-
-      <!-- Control Panel -->
-      <div id="control-panel">
-        <button id="toggle-nameplates" onclick="toggleNameplates()">Show Nameplates</button>
-        <button id="toggle-connections" onclick="toggleConnections()">Show Connections</button>
-        <button id="toggle-health" onclick="toggleHealthHalos()">Show Health</button>
-        <button id="toggle-debug" onclick="toggleDebug()">Debug Mode</button>
-      </div>
-
-      <!-- Keyboard Help -->
-      <div id="keyboard-help">
-        <h3>🎮 Controls</h3>
-        <div class="shortcut">
-          <span>WASD</span>
-          <span>Move</span>
-        </div>
-        <div class="shortcut">
-          <span>Mouse</span>
-          <span>Look</span>
-        </div>
-        <div class="shortcut">
-          <span>Click</span>
-          <span>Select</span>
-        </div>
-        <div class="shortcut">
-          <span>1-5</span>
-          <span>Teleport</span>
-        </div>
-        <div class="shortcut">
-          <span>ESC</span>
-          <span>Deselect</span>
-        </div>
-      </div>
-
-      <!-- VR Indicator -->
-      <div id="vr-indicator">🥽 VR Mode Active</div>
-
-      <!-- Debug Panel -->
-      <div id="debug-panel">
-        <div>Thronglets: <span id="debug-thronglet-count">0</span></div>
-        <div>Connections: <span id="debug-connection-count">0</span></div>
-        <div>FPS: <span id="debug-fps">0</span></div>
-        <div>Selected: <span id="debug-selected">None</span></div>
-      </div>
-    </a-entity>
+    <!-- Grid Helper -->
+    <a-grid-helper
+      args="[100, 100]"
+      position="0 0.01 0"
+      rotation="-90 0 0"
+      material="color: #4fc3f7; opacity: 0.1; transparent: true">
+    </a-grid-helper>
   </a-scene>
 
-  <!-- Load VR Practice Script -->
-  <script src="vr_practice.js"></script>
-  
-  <!-- Initialize Application -->
+  <!-- UI Overlay -->
+  <div class="ui-overlay">
+    <!-- Top Bar -->
+    <div class="top-bar">
+      <div class="logo">Thronglets <span>VR</span></div>
+      <div class="controls">
+        <button class="control-btn" id="toggle-nameplates" onclick="toggleNameplatesVisibility()">
+          👁️ Nameplates
+        </button>
+        <button class="control-btn" id="toggle-connections" onclick="toggleConnectionsVisibility()">
+          🔗 Connections
+        </button>
+        <button class="control-btn" id="toggle-health" onclick="toggleHealthHalosVisibility()">
+          ❤️ Health
+        </button>
+        <button class="control-btn" id="toggle-debug" onclick="toggleDebugMode()">
+          🐛 Debug
+        </button>
+      </div>
+    </div>
+
+    <!-- Detail Panel -->
+    <div class="detail-panel" id="detail-panel">
+      <div class="detail-header">
+        <h3 class="detail-title" id="detail-title">Select a Thronglet</h3>
+        <button class="close-btn" onclick="closeDetailPanel()">&times;</button>
+      </div>
+
+      <div class="detail-row">
+        <div class="detail-label">Role</div>
+        <div class="detail-value" id="detail-role">-</div>
+      </div>
+
+      <div class="detail-row">
+        <div class="detail-label">Health Status</div>
+        <div class="detail-value health" id="detail-health">-</div>
+      </div>
+
+      <div class="detail-row">
+        <div class="detail-label">Mood</div>
+        <div class="detail-value mood" id="detail-mood">-</div>
+      </div>
+
+      <div class="detail-row">
+        <div class="detail-label">Token Count</div>
+        <div class="detail-value" id="detail-tokens">-</div>
+      </div>
+
+      <div class="detail-row">
+        <div class="detail-label">Uptime</div>
+        <div class="detail-value" id="detail-uptime">-</div>
+      </div>
+
+      <div class="detail-row">
+        <div class="detail-label">Last Seen</div>
+        <div class="detail-value" id="detail-last-seen">-</div>
+      </div>
+    </div>
+
+    <!-- Proximity Alert -->
+    <div class="proximity-alert" id="proximity-alert">
+      <span id="alert-text"></span>
+    </div>
+
+    <!-- VR Indicator -->
+    <div class="vr-indicator" id="vr-indicator">
+      🥽 VR Mode Active
+    </div>
+
+    <!-- Debug Panel -->
+    <div class="debug-panel" id="debug-panel">
+      <div class="debug-row">
+        <span class="debug-label">Thronglets:</span>
+        <span class="debug-value" id="debug-thronglet-count">0</span>
+      </div>
+      <div class="debug-row">
+        <span class="debug-label">Connections:</span>
+        <span class="debug-value" id="debug-connection-count">0</span>
+      </div>
+      <div class="debug-row">
+        <span class="debug-label">Selected:</span>
+        <span class="debug-value" id="debug-selected">None</span>
+      </div>
+    </div>
+
+    <!-- Keyboard Help -->
+    <div class="keyboard-help">
+      <h4>Keyboard Controls</h4>
+      <div><kbd>1-5</kbd> Teleport to Thronglet</div>
+      <div><kbd>ESC</kbd> Deselect</div>
+      <div><kbd>WASD</kbd> Move Camera</div>
+      <div><kbd>V</kbd> VR Keyboard</div>
+    </div>
+
+    <!-- VR Keyboard Modal -->
+    <div class="vr-keyboard" id="vr-keyboard">
+      <div class="keyboard-header">
+        <span>Type a prompt for Thronglet</span>
+        <button class="keyboard-close" onclick="toggleVRKeyboard()">&times;</button>
+      </div>
+      <div class="keyboard-body">
+        <textarea id="vr-keyboard-input" placeholder="Enter your message..." rows="3"></textarea>
+        <div class="keyboard-buttons">
+          <button id="vr-keyboard-send" class="keyboard-send-btn">Send</button>
+          <button id="vr-keyboard-cancel" class="keyboard-cancel-btn">Cancel</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- VR Practice Mode Component -->
+  <script src="vr_practice_mode_component.js"></script>
+
+  <!-- VR Practice Mode Logic -->
+  <script src="vr_practice_mode.js"></script>
+
+  <!-- Initialize VR Practice Mode -->
   <script>
-    // Initialize application when DOM is ready
+    // Wait for A-Frame to load
     document.addEventListener('DOMContentLoaded', () => {
-      // Hide loading screen when A-Frame is ready
+      // Initialize VR Practice Mode
+      initThrongletsVR();
+
+      // Hide loading screen when scene is ready
       const scene = document.querySelector('a-scene');
-      
       scene.addEventListener('loaded', () => {
-        setTimeout(() => {
-          const loadingScreen = document.getElementById('loading-screen');
-          loadingScreen.style.opacity = '0';
-          loadingScreen.style.transition = 'opacity 0.5s ease';
-          
-          setTimeout(() => {
-            loadingScreen.style.display = 'none';
-          }, 500);
-        }, 1000);
+        const loadingScreen = document.getElementById('loading-screen');
+        if (loadingScreen) {
+          loadingScreen.classList.add('hidden');
+        }
       });
 
-      // Initialize VR Practice Mode
-      if (typeof initThrongletsVR === 'function') {
-        initThrongletsVR();
-      } else {
-        console.error('VR Practice Mode not initialized');
+      // Start simulation
+      if (VRState.practiceMode) {
+        VRState.practiceMode.startSimulation();
       }
     });
 
-    // Detail Panel Functions
-    function closeDetailPanel() {
-      const panel = document.getElementById('detail-panel');
-      panel.classList.remove('visible');
-      document.body.style.overflow = '';
-    }
-
-    // Control Panel Functions
-    function toggleNameplates() {
-      const button = document.getElementById('toggle-nameplates');
-      button.classList.toggle('active');
-      if (typeof toggleNameplatesVisibility === 'function') {
-        toggleNameplatesVisibility();
-      }
-    }
-
-    function toggleConnections() {
-      const button = document.getElementById('toggle-connections');
-      button.classList.toggle('active');
-      if (typeof toggleConnectionsVisibility === 'function') {
-        toggleConnectionsVisibility();
-      }
-    }
-
-    function toggleHealthHalos() {
-      const button = document.getElementById('toggle-health');
-      button.classList.toggle('active');
-      if (typeof toggleHealthHalosVisibility === 'function') {
-        toggleHealthHalosVisibility();
-      }
-    }
-
-    function toggleDebug() {
-      const panel = document.getElementById('debug-panel');
-      panel.classList.toggle('visible');
-      if (typeof toggleDebugMode === 'function') {
-        toggleDebugMode();
-      }
-    }
-
-    // Keyboard Event Handlers
-    document.addEventListener('keydown', (event) => {
-      // Teleport to thronglets (1-5)
-      if (event.key >= '1' && event.key <= '5') {
-        const index = parseInt(event.key) - 1;
-        if (typeof teleportToThronglet === 'function') {
-          teleportToThronglet(index);
-        }
-      }
-
-      // Deselect on ESC
-      if (event.key === 'Escape') {
-        if (typeof deselectThronglet === 'function') {
-          deselectThronglet();
+    // Handle A-Frame entity clicks
+    document.addEventListener('click', (event) => {
+      const clickedEntity = event.target.closest('a-entity');
+      if (clickedEntity) {
+        const throngletId = clickedEntity.getAttribute('data-thronglet-id');
+        if (throngletId) {
+          VRState.practiceMode.selectThronglet(throngletId);
         }
       }
     });
-
-    // Handle VR Mode
-    document.addEventListener('enter-vr', () => {
-      const indicator = document.getElementById('vr-indicator');
-      indicator.classList.add('visible');
-    });
-
-    document.addEventListener('exit-vr', () => {
-      const indicator = document.getElementById('vr-indicator');
-      indicator.classList.remove('visible');
-    });
-
-    // Performance Monitoring
-    let frameCount = 0;
-    let lastTime = performance.now();
-    let fps = 0;
-
-    function updateFPS() {
-      frameCount++;
-      const currentTime = performance.now();
-      
-      if (currentTime - lastTime >= 1000) {
-        fps = Math.round((frameCount * 1000) / (currentTime - lastTime));
-        document.getElementById('debug-fps').textContent = fps;
-        frameCount = 0;
-        lastTime = currentTime;
-      }
-      
-      requestAnimationFrame(updateFPS);
-    }
-
-    updateFPS();
 
     // Handle window resize
-    window.addEventListener('resize', () => {
-      if (typeof handleResize === 'function') {
-        handleResize();
-      }
-    });
-
-    // Console welcome message
-    console.log('%c🚀 Thronglets VR Practice Mode', 'color: #4fc3f7; font-size: 20px; font-weight: bold;');
-    console.log('%cInteractive 3D visualization and simulation environment', 'color: #aaa; font-size: 12px;');
-    console.log('%cPress F12 to open developer tools', 'color: #aaa; font-size: 12px;');
+    window.addEventListener('resize', handleResize);
   </script>
 </body>
 </html>

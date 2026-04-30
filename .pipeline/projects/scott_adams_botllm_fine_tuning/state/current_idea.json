@@ -2,5 +2,6 @@
   "title": "[scott adams bot/llm fine tuning]",
   "description": "[scott adams bot/llm fine tuning]",
   "status": "phase_1_executing",
-  "total_phases": 5
+  "total_phases": 5,
+  "phase": 1
 }

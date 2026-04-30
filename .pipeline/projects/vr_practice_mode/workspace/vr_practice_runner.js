@@ -1,347 +1,351 @@
+#!/usr/bin/env node
 /**
  * Thronglets VR Practice Mode - Test Runner
- * Executes test suite and reports results
+ * Runs the test suite and reports results
  */
 
 const fs = require('fs');
 const path = require('path');
 
-// Test results tracking
-const testResults = {
-  passed: 0,
-  failed: 0,
-  total: 0,
-  tests: []
-};
+// Command line arguments
+const args = process.argv.slice(2);
+const watchMode = args.includes('--watch');
+const verbose = args.includes('--verbose');
+const coverage = args.includes('--coverage');
 
-// Colors for terminal output
+// Test results tracking
+let totalTests = 0;
+let passedTests = 0;
+let failedTests = 0;
+let testResults = [];
+
+// Color codes for terminal output
 const colors = {
   reset: '\x1b[0m',
   red: '\x1b[31m',
   green: '\x1b[32m',
   yellow: '\x1b[33m',
   blue: '\x1b[34m',
-  magenta: '\x1b[35m',
-  cyan: '\x1b[36m',
-  white: '\x1b[37m'
+  cyan: '\x1b[36m'
 };
 
-// Helper functions
-function log(message, color = 'reset') {
-  console.log(`${colors[color]}${message}${colors.reset}`);
-}
+/**
+ * Simple assertion library
+ */
+const assert = {
+  equal: (actual, expected, message) => {
+    totalTests++;
+    const passed = actual == expected;
+    if (passed) {
+      passedTests++;
+    } else {
+      failedTests++;
+    }
+    testResults.push({
+      name: message || `Expected ${expected} but got ${actual}`,
+      passed,
+      actual,
+      expected
+    });
+    if (verbose || !passed) {
+      console.log(`  ${passed ? colors.green + '✓' : colors.red + '✗'} ${message || `Expected ${expected} but got ${actual}`}`);
+    }
+    return passed;
+  },
 
-function logSuccess(message) {
-  log(message, 'green');
-}
+  deepEqual: (actual, expected, message) => {
+    totalTests++;
+    const passed = JSON.stringify(actual) === JSON.stringify(expected);
+    if (passed) {
+      passedTests++;
+    } else {
+      failedTests++;
+    }
+    testResults.push({
+      name: message || `Expected ${JSON.stringify(expected)} but got ${JSON.stringify(actual)}`,
+      passed,
+      actual,
+      expected
+    });
+    if (verbose || !passed) {
+      console.log(`  ${passed ? colors.green + '✓' : colors.red + '✗'} ${message || `Expected ${JSON.stringify(expected)} but got ${JSON.stringify(actual)}`}`);
+    }
+    return passed;
+  },
 
-function logError(message) {
-  log(message, 'red');
-}
+  isTrue: (value, message) => {
+    totalTests++;
+    const passed = value === true;
+    if (passed) {
+      passedTests++;
+    } else {
+      failedTests++;
+    }
+    testResults.push({
+      name: message || `Expected true but got ${value}`,
+      passed,
+      actual: value,
+      expected: true
+    });
+    if (verbose || !passed) {
+      console.log(`  ${passed ? colors.green + '✓' : colors.red + '✗'} ${message || `Expected true but got ${value}`}`);
+    }
+    return passed;
+  },
 
-function logWarning(message) {
-  log(message, 'yellow');
-}
+  isFalse: (value, message) => {
+    totalTests++;
+    const passed = value === false;
+    if (passed) {
+      passedTests++;
+    } else {
+      failedTests++;
+    }
+    testResults.push({
+      name: message || `Expected false but got ${value}`,
+      passed,
+      actual: value,
+      expected: false
+    });
+    if (verbose || !passed) {
+      console.log(`  ${passed ? colors.green + '✓' : colors.red + '✗'} ${message || `Expected false but got ${value}`}`);
+    }
+    return passed;
+  },
 
-function logInfo(message) {
-  log(message, 'blue');
-}
+  isNull: (value, message) => {
+    totalTests++;
+    const passed = value === null;
+    if (passed) {
+      passedTests++;
+    } else {
+      failedTests++;
+    }
+    testResults.push({
+      name: message || `Expected null but got ${value}`,
+      passed,
+      actual: value,
+      expected: null
+    });
+    if (verbose || !passed) {
+      console.log(`  ${passed ? colors.green + '✓' : colors.red + '✗'} ${message || `Expected null but got ${value}`}`);
+    }
+    return passed;
+  },
 
-function logDebug(message) {
-  log(message, 'cyan');
-}
+  isUndefined: (value, message) => {
+    totalTests++;
+    const passed = value === undefined;
+    if (passed) {
+      passedTests++;
+    } else {
+      failedTests++;
+    }
+    testResults.push({
+      name: message || `Expected undefined but got ${value}`,
+      passed,
+      actual: value,
+      expected: undefined
+    });
+    if (verbose || !passed) {
+      console.log(`  ${passed ? colors.green + '✓' : colors.red + '✗'} ${message || `Expected undefined but got ${value}`}`);
+    }
+    return passed;
+  },
 
-// Test assertion functions
-function assertEqual(actual, expected, message) {
-  testResults.total++;
-  const passed = actual === expected;
-  
-  if (passed) {
-    testResults.passed++;
-    logSuccess(`✓ ${message}`);
-  } else {
-    testResults.failed++;
-    logError(`✗ ${message}`);
-    logError(`  Expected: ${expected}`);
-    logError(`  Actual: ${actual}`);
+  isDefined: (value, message) => {
+    totalTests++;
+    const passed = value !== undefined && value !== null;
+    if (passed) {
+      passedTests++;
+    } else {
+      failedTests++;
+    }
+    testResults.push({
+      name: message || `Expected defined value but got ${value}`,
+      passed,
+      actual: value,
+      expected: 'defined'
+    });
+    if (verbose || !passed) {
+      console.log(`  ${passed ? colors.green + '✓' : colors.red + '✗'} ${message || `Expected defined value but got ${value}`}`);
+    }
+    return passed;
+  },
+
+  notEqual: (actual, expected, message) => {
+    totalTests++;
+    const passed = actual != expected;
+    if (passed) {
+      passedTests++;
+    } else {
+      failedTests++;
+    }
+    testResults.push({
+      name: message || `Expected ${actual} to not equal ${expected}`,
+      passed,
+      actual,
+      expected
+    });
+    if (verbose || !passed) {
+      console.log(`  ${passed ? colors.green + '✓' : colors.red + '✗'} ${message || `Expected ${actual} to not equal ${expected}`}`);
+    }
+    return passed;
+  },
+
+  contains: (actual, expected, message) => {
+    totalTests++;
+    const passed = actual.includes(expected);
+    if (passed) {
+      passedTests++;
+    } else {
+      failedTests++;
+    }
+    testResults.push({
+      name: message || `Expected ${actual} to contain ${expected}`,
+      passed,
+      actual,
+      expected
+    });
+    if (verbose || !passed) {
+      console.log(`  ${passed ? colors.green + '✓' : colors.red + '✗'} ${message || `Expected ${actual} to contain ${expected}`}`);
+    }
+    return passed;
+  },
+
+  greaterThan: (actual, expected, message) => {
+    totalTests++;
+    const passed = actual > expected;
+    if (passed) {
+      passedTests++;
+    } else {
+      failedTests++;
+    }
+    testResults.push({
+      name: message || `Expected ${actual} to be greater than ${expected}`,
+      passed,
+      actual,
+      expected
+    });
+    if (verbose || !passed) {
+      console.log(`  ${passed ? colors.green + '✓' : colors.red + '✗'} ${message || `Expected ${actual} to be greater than ${expected}`}`);
+    }
+    return passed;
   }
-  
-  testResults.tests.push({
-    name: message,
-    passed,
-    expected,
-    actual
-  });
-  
-  return passed;
-}
+};
 
-function assertNotEqual(actual, expected, message) {
-  testResults.total++;
-  const passed = actual !== expected;
-  
-  if (passed) {
-    testResults.passed++;
-    logSuccess(`✓ ${message}`);
-  } else {
-    testResults.failed++;
-    logError(`✗ ${message}`);
-    logError(`  Expected: ${expected}`);
-    logError(`  Actual: ${actual}`);
-  }
-  
-  testResults.tests.push({
-    name: message,
-    passed,
-    expected,
-    actual
-  });
-  
-  return passed;
-}
-
-function assertTrue(actual, message) {
-  testResults.total++;
-  const passed = Boolean(actual);
-  
-  if (passed) {
-    testResults.passed++;
-    logSuccess(`✓ ${message}`);
-  } else {
-    testResults.failed++;
-    logError(`✗ ${message}`);
-    logError(`  Expected: true`);
-    logError(`  Actual: ${actual}`);
-  }
-  
-  testResults.tests.push({
-    name: message,
-    passed,
-    expected: true,
-    actual
-  });
-  
-  return passed;
-}
-
-function assertFalse(actual, message) {
-  testResults.total++;
-  const passed = !Boolean(actual);
-  
-  if (passed) {
-    testResults.passed++;
-    logSuccess(`✓ ${message}`);
-  } else {
-    testResults.failed++;
-    logError(`✗ ${message}`);
-    logError(`  Expected: false`);
-    logError(`  Actual: ${actual}`);
-  }
-  
-  testResults.tests.push({
-    name: message,
-    passed,
-    expected: false,
-    actual
-  });
-  
-  return passed;
-}
-
-function assertNotNull(actual, message) {
-  testResults.total++;
-  const passed = actual !== null && actual !== undefined;
-  
-  if (passed) {
-    testResults.passed++;
-    logSuccess(`✓ ${message}`);
-  } else {
-    testResults.failed++;
-    logError(`✗ ${message}`);
-    logError(`  Expected: not null/undefined`);
-    logError(`  Actual: ${actual}`);
-  }
-  
-  testResults.tests.push({
-    name: message,
-    passed,
-    expected: 'not null/undefined',
-    actual
-  });
-  
-  return passed;
-}
-
-function assertNull(actual, message) {
-  testResults.total++;
-  const passed = actual === null || actual === undefined;
-  
-  if (passed) {
-    testResults.passed++;
-    logSuccess(`✓ ${message}`);
-  } else {
-    testResults.failed++;
-    logError(`✗ ${message}`);
-    logError(`  Expected: null/undefined`);
-    logError(`  Actual: ${actual}`);
-  }
-  
-  testResults.tests.push({
-    name: message,
-    passed,
-    expected: 'null/undefined',
-    actual
-  });
-  
-  return passed;
-}
-
-function assertArrayLength(actual, expected, message) {
-  testResults.total++;
-  const passed = Array.isArray(actual) && actual.length === expected;
-  
-  if (passed) {
-    testResults.passed++;
-    logSuccess(`✓ ${message}`);
-  } else {
-    testResults.failed++;
-    logError(`✗ ${message}`);
-    logError(`  Expected length: ${expected}`);
-    logError(`  Actual length: ${Array.isArray(actual) ? actual.length : 'N/A'}`);
-  }
-  
-  testResults.tests.push({
-    name: message,
-    passed,
-    expected,
-    actual
-  });
-  
-  return passed;
-}
-
-function assertContains(actual, expected, message) {
-  testResults.total++;
-  const passed = Array.isArray(actual) && actual.includes(expected);
-  
-  if (passed) {
-    testResults.passed++;
-    logSuccess(`✓ ${message}`);
-  } else {
-    testResults.failed++;
-    logError(`✗ ${message}`);
-    logError(`  Expected to contain: ${expected}`);
-    logError(`  Actual: ${actual}`);
-  }
-  
-  testResults.tests.push({
-    name: message,
-    passed,
-    expected,
-    actual
-  });
-  
-  return passed;
-}
-
-function assertStringContains(actual, expected, message) {
-  testResults.total++;
-  const passed = typeof actual === 'string' && actual.includes(expected);
-  
-  if (passed) {
-    testResults.passed++;
-    logSuccess(`✓ ${message}`);
-  } else {
-    testResults.failed++;
-    logError(`✗ ${message}`);
-    logError(`  Expected to contain: ${expected}`);
-    logError(`  Actual: ${actual}`);
-  }
-  
-  testResults.tests.push({
-    name: message,
-    passed,
-    expected,
-    actual
-  });
-  
-  return passed;
-}
-
-// Mock environment setup
-function setupMockEnvironment() {
-  global.document = {
-    querySelector: () => ({
-      addEventListener: () => {},
-      setAttribute: () => {},
-      getAttribute: () => null,
-      hasAttribute: () => false,
-      appendChild: () => {},
-      removeAttribute: () => {}
-    }),
-    getElementById: () => ({
-      addEventListener: () => {},
-      setAttribute: () => {},
-      getAttribute: () => null,
-      hasAttribute: () => false,
-      appendChild: () => {},
-      removeAttribute: () => {},
-      classList: { add: () => {}, remove: () => {}, toggle: () => {} },
-      style: { opacity: '', display: '' },
-      textContent: ''
-    }),
+// Mock globals for testing
+global.document = {
+  querySelector: () => ({
     addEventListener: () => {},
-    querySelectorAll: () => []
-  };
-
-  global.window = {
+    setAttribute: () => {},
+    getAttribute: () => null,
+    hasAttribute: () => false,
+    appendChild: () => {},
+    removeAttribute: () => {}
+  }),
+  getElementById: () => ({
     addEventListener: () => {},
-    resize: {}
-  };
+    setAttribute: () => {},
+    getAttribute: () => null,
+    hasAttribute: () => false,
+    appendChild: () => {},
+    removeAttribute: () => {},
+    classList: { add: () => {}, remove: () => {}, toggle: () => {} },
+    style: { opacity: '', display: '' },
+    textContent: ''
+  }),
+  addEventListener: () => {},
+  querySelectorAll: () => []
+};
 
-  global.performance = {
-    now: () => Date.now()
-  };
+global.window = {
+  addEventListener: () => {},
+  resize: {}
+};
+
+global.performance = {
+  now: () => Date.now()
+};
+
+// Import modules
+const { VRState, Thronglet, Connection, VRPracticeMode, initThrongletsVR, closeDetailPanel, toggleNameplatesVisibility, toggleConnectionsVisibility, toggleHealthHalosVisibility, toggleDebugMode, teleportToThronglet, deselectThronglet, handleResize } = require('./vr_practice.js');
+
+// Test suite
+console.log(colors.cyan + '\n🧪 Thronglets VR Practice Mode - Test Suite' + colors.reset);
+console.log('=' .repeat(60) + '\n');
+
+// Helper function to run a test
+function test(description, fn) {
+  console.log(colors.blue + `  ${description}` + colors.reset);
+  try {
+    fn();
+  } catch (error) {
+    totalTests++;
+    failedTests++;
+    console.log(`    ${colors.red}✗ Error: ${error.message}` + colors.reset);
+    testResults.push({
+      name: description,
+      passed: false,
+      error: error.message
+    });
+  }
 }
 
-// Test suite execution
-function runTestSuite() {
-  logInfo('========================================');
-  logInfo('Thronglets VR Practice Mode - Test Suite');
-  logInfo('========================================\n');
-
-  setupMockEnvironment();
-
-  // Import modules
-  const { VRState, Thronglet, Connection, VRPracticeMode } = require('./vr_practice.js');
-
-  logInfo('Running Thronglet Class Tests...\n');
-  runThrongletTests(VRState, Thronglet);
-
-  logInfo('\nRunning Connection Class Tests...\n');
-  runConnectionTests(VRState, Thronglet, Connection);
-
-  logInfo('\nRunning VRState Tests...\n');
-  runVRStateTests(VRState);
-
-  logInfo('\nRunning VRPracticeMode Class Tests...\n');
-  runVRPracticeModeTests(VRState, Thronglet, Connection, VRPracticeMode);
-
-  logInfo('\nRunning Global Functions Tests...\n');
-  runGlobalFunctionsTests(VRState, Thronglet, VRPracticeMode);
-
-  logInfo('\nRunning Edge Cases Tests...\n');
-  runEdgeCaseTests(VRState, Thronglet, VRPracticeMode);
-
-  logInfo('\nRunning Integration Tests...\n');
-  runIntegrationTests(VRState, Thronglet, VRPracticeMode);
-
-  // Print summary
-  printSummary();
+// Helper function to run an async test
+async function asyncTest(description, fn) {
+  console.log(colors.blue + `  ${description}` + colors.reset);
+  try {
+    await fn();
+  } catch (error) {
+    totalTests++;
+    failedTests++;
+    console.log(`    ${colors.red}✗ Error: ${error.message}` + colors.reset);
+    testResults.push({
+      name: description,
+      passed: false,
+      error: error.message
+    });
+  }
 }
 
-function runThrongletTests(VRState, Thronglet) {
-  // Test 1: Create thronglet with default values
+// Reset state helper
+function resetState() {
+  VRState.thronglets = [];
+  VRState.connections = [];
+  VRState.selectedThronglet = null;
+  VRState.settings = {
+    showNameplates: true,
+    showConnections: true,
+    showHealthHalos: true,
+    debugMode: false
+  };
+  VRState.config = null;
+  VRState.practiceMode = null;
+}
+
+// Create test thronglet helper
+function createTestThronglet(overrides = {}) {
+  const data = {
+    id: '1',
+    name: 'Test Thronglet',
+    role: 'agent',
+    color: '#ff0000',
+    position: { x: 0, y: 0, z: 0 },
+    health: 'healthy',
+    mood: 'neutral',
+    token_count: 100,
+    uptime: 3600,
+    last_seen: '2024-01-01T00:00:00Z',
+    ...overrides
+  };
+  return new Thronglet(data);
+}
+
+// ==================== Thronglet Class Tests ====================
+console.log(colors.yellow + '\n📦 Thronglet Class Tests' + colors.reset);
+
+test('should create a thronglet with default values', () => {
   const data = {
     id: '1',
     name: 'Test Thronglet',
@@ -356,78 +360,69 @@ function runThrongletTests(VRState, Thronglet) {
   };
 
   const thronglet = new Thronglet(data);
-  assertEqual(thronglet.id, '1', 'Thronglet ID should be "1"');
-  assertEqual(thronglet.name, 'Test Thronglet', 'Thronglet name should be "Test Thronglet"');
-  assertEqual(thronglet.role, 'agent', 'Thronglet role should be "agent"');
-  assertEqual(thronglet.color, '#ff0000', 'Thronglet color should be "#ff0000"');
-  assertEqual(thronglet.health, 'healthy', 'Thronglet health should be "healthy"');
-  assertEqual(thronglet.mood, 'neutral', 'Thronglet mood should be "neutral"');
-  assertEqual(thronglet.tokenCount, 100, 'Thronglet token count should be 100');
 
-  // Test 2: Get health color
-  const healthy = new Thronglet({ ...data, id: '2', health: 'healthy' });
-  const warning = new Thronglet({ ...data, id: '3', health: 'warning' });
-  const critical = new Thronglet({ ...data, id: '4', health: 'critical' });
+  assert.equal(thronglet.id, '1', 'id should be 1');
+  assert.equal(thronglet.name, 'Test Thronglet', 'name should be Test Thronglet');
+  assert.equal(thronglet.role, 'agent', 'role should be agent');
+  assert.equal(thronglet.color, '#ff0000', 'color should be #ff0000');
+  assert.equal(thronglet.health, 'healthy', 'health should be healthy');
+  assert.equal(thronglet.mood, 'neutral', 'mood should be neutral');
+  assert.equal(thronglet.tokenCount, 100, 'tokenCount should be 100');
+});
 
-  assertEqual(healthy.getHealthColor(), '#81c784', 'Healthy thronglet health color should be green');
-  assertEqual(warning.getHealthColor(), '#ffb74d', 'Warning thronglet health color should be orange');
-  assertEqual(critical.getHealthColor(), '#e57373', 'Critical thronglet health color should be red');
+test('should get health color correctly', () => {
+  const healthy = new Thronglet({ id: '1', name: 'Test', role: 'agent', color: '#ff0000', position: { x: 0, y: 0, z: 0 }, health: 'healthy', mood: 'neutral', token_count: 100, uptime: 3600, last_seen: '2024-01-01T00:00:00Z' });
+  const warning = new Thronglet({ id: '2', name: 'Test', role: 'agent', color: '#ff0000', position: { x: 0, y: 0, z: 0 }, health: 'warning', mood: 'neutral', token_count: 100, uptime: 3600, last_seen: '2024-01-01T00:00:00Z' });
+  const critical = new Thronglet({ id: '3', name: 'Test', role: 'agent', color: '#ff0000', position: { x: 0, y: 0, z: 0 }, health: 'critical', mood: 'neutral', token_count: 100, uptime: 3600, last_seen: '2024-01-01T00:00:00Z' });
 
-  // Test 3: Get health badge
-  const healthyBadge = healthy.getHealthBadge();
-  const warningBadge = warning.getHealthBadge();
-  const criticalBadge = critical.getHealthBadge();
+  assert.equal(healthy.getHealthColor(), '#81c784', 'healthy should be green');
+  assert.equal(warning.getHealthColor(), '#ffb74d', 'warning should be orange');
+  assert.equal(critical.getHealthColor(), '#e57373', 'critical should be red');
+});
 
-  assertStringContains(healthyBadge, 'Healthy', 'Healthy badge should contain "Healthy"');
-  assertStringContains(warningBadge, 'Warning', 'Warning badge should contain "Warning"');
-  assertStringContains(criticalBadge, 'Critical', 'Critical badge should contain "Critical"');
+test('should get health badge correctly', () => {
+  const healthy = new Thronglet({ id: '1', name: 'Test', role: 'agent', color: '#ff0000', position: { x: 0, y: 0, z: 0 }, health: 'healthy', mood: 'neutral', token_count: 100, uptime: 3600, last_seen: '2024-01-01T00:00:00Z' });
+  const warning = new Thronglet({ id: '2', name: 'Test', role: 'agent', color: '#ff0000', position: { x: 0, y: 0, z: 0 }, health: 'warning', mood: 'neutral', token_count: 100, uptime: 3600, last_seen: '2024-01-01T00:00:00Z' });
+  const critical = new Thronglet({ id: '3', name: 'Test', role: 'agent', color: '#ff0000', position: { x: 0, y: 0, z: 0 }, health: 'critical', mood: 'neutral', token_count: 100, uptime: 3600, last_seen: '2024-01-01T00:00:00Z' });
 
-  // Test 4: Update timestamp
-  const oldTimestamp = thronglet.lastSeen;
-  thronglet.updateTimestamp();
-  assertTrue(thronglet.lastSeen !== oldTimestamp, 'Timestamp should be updated');
+  assert.contains(healthy.getHealthBadge(), 'Healthy', 'healthy badge should contain Healthy');
+  assert.contains(warning.getHealthBadge(), 'Warning', 'warning badge should contain Warning');
+  assert.contains(critical.getHealthBadge(), 'Critical', 'critical badge should contain Critical');
+});
 
-  // Test 5: Serialize to JSON
-  const json = thronglet.toJSON();
-  assertEqual(json.id, '1', 'JSON ID should be "1"');
-  assertEqual(json.name, 'Test Thronglet', 'JSON name should be "Test Thronglet"');
-  assertEqual(json.role, 'agent', 'JSON role should be "agent"');
-  assertEqual(json.color, '#ff0000', 'JSON color should be "#ff0000"');
-  assertEqual(json.position.x, 0, 'JSON position x should be 0');
-  assertEqual(json.position.y, 0, 'JSON position y should be 0');
-  assertEqual(json.position.z, 0, 'JSON position z should be 0');
-  assertEqual(json.health, 'healthy', 'JSON health should be "healthy"');
-  assertEqual(json.mood, 'neutral', 'JSON mood should be "neutral"');
-  assertEqual(json.token_count, 100, 'JSON token_count should be 100');
-  assertEqual(json.uptime, 3600, 'JSON uptime should be 3600');
-}
-
-function runConnectionTests(VRState, Thronglet, Connection) {
-  const fromThronglet = new Thronglet({
+test('should serialize to JSON correctly', () => {
+  const thronglet = new Thronglet({
     id: '1',
-    name: 'Test 1',
+    name: 'Test Thronglet',
     role: 'agent',
     color: '#ff0000',
-    position: { x: 0, y: 0, z: 0 },
+    position: { x: 1, y: 2, z: 3 },
     health: 'healthy',
-    mood: 'neutral',
+    mood: 'happy',
     token_count: 100,
     uptime: 3600,
     last_seen: '2024-01-01T00:00:00Z'
   });
 
-  const toThronglet = new Thronglet({
-    id: '2',
-    name: 'Test 2',
-    role: 'agent',
-    color: '#00ff00',
-    position: { x: 1, y: 0, z: 0 },
-    health: 'healthy',
-    mood: 'neutral',
-    token_count: 100,
-    uptime: 3600,
-    last_seen: '2024-01-01T00:00:00Z'
-  });
+  const json = thronglet.toJSON();
+
+  assert.equal(json.id, '1', 'id should be 1');
+  assert.equal(json.name, 'Test Thronglet', 'name should be Test Thronglet');
+  assert.equal(json.role, 'agent', 'role should be agent');
+  assert.equal(json.color, '#ff0000', 'color should be #ff0000');
+  assert.deepEqual(json.position, { x: 1, y: 2, z: 3 }, 'position should match');
+  assert.equal(json.health, 'healthy', 'health should be healthy');
+  assert.equal(json.mood, 'happy', 'mood should be happy');
+  assert.equal(json.token_count, 100, 'token_count should be 100');
+  assert.equal(json.uptime, 3600, 'uptime should be 3600');
+});
+
+// ==================== Connection Class Tests ====================
+console.log(colors.yellow + '\n🔗 Connection Class Tests' + colors.reset);
+
+test('should create a connection with default values', () => {
+  const fromThronglet = new Thronglet({ id: '1', name: 'Test 1', role: 'agent', color: '#ff0000', position: { x: 0, y: 0, z: 0 }, health: 'healthy', mood: 'neutral', token_count: 100, uptime: 3600, last_seen: '2024-01-01T00:00:00Z' });
+  const toThronglet = new Thronglet({ id: '2', name: 'Test 2', role: 'agent', color: '#00ff00', position: { x: 1, y: 0, z: 0 }, health: 'healthy', mood: 'neutral', token_count: 100, uptime: 3600, last_seen: '2024-01-01T00:00:00Z' });
 
   const data = {
     from: '1',
@@ -439,316 +434,309 @@ function runConnectionTests(VRState, Thronglet, Connection) {
 
   const connection = new Connection(data, fromThronglet, toThronglet);
 
-  assertEqual(connection.from, '1', 'Connection from should be "1"');
-  assertEqual(connection.to, '2', 'Connection to should be "2"');
-  assertEqual(connection.type, 'communication', 'Connection type should be "communication"');
-  assertEqual(connection.color, '#0000ff', 'Connection color should be "#0000ff"');
-  assertEqual(connection.label, 'Test Connection', 'Connection label should be "Test Connection"');
-  assertEqual(connection.fromThronglet, fromThronglet, 'Connection fromThronglet should match');
-  assertEqual(connection.toThronglet, toThronglet, 'Connection toThronglet should match');
+  assert.equal(connection.from, '1', 'from should be 1');
+  assert.equal(connection.to, '2', 'to should be 2');
+  assert.equal(connection.type, 'communication', 'type should be communication');
+  assert.equal(connection.color, '#0000ff', 'color should be #0000ff');
+  assert.equal(connection.label, 'Test Connection', 'label should be Test Connection');
+  assert.equal(connection.fromThronglet, fromThronglet, 'fromThronglet should match');
+  assert.equal(connection.toThronglet, toThronglet, 'toThronglet should match');
+});
 
-  // Test serialization
+test('should serialize to JSON correctly', () => {
+  const fromThronglet = new Thronglet({ id: '1', name: 'Test 1', role: 'agent', color: '#ff0000', position: { x: 0, y: 0, z: 0 }, health: 'healthy', mood: 'neutral', token_count: 100, uptime: 3600, last_seen: '2024-01-01T00:00:00Z' });
+  const toThronglet = new Thronglet({ id: '2', name: 'Test 2', role: 'agent', color: '#00ff00', position: { x: 1, y: 0, z: 0 }, health: 'healthy', mood: 'neutral', token_count: 100, uptime: 3600, last_seen: '2024-01-01T00:00:00Z' });
+
+  const data = {
+    from: '1',
+    to: '2',
+    type: 'communication',
+    color: '#0000ff',
+    label: 'Test Connection'
+  };
+
+  const connection = new Connection(data, fromThronglet, toThronglet);
   const json = connection.toJSON();
-  assertEqual(json.from, '1', 'JSON from should be "1"');
-  assertEqual(json.to, '2', 'JSON to should be "2"');
-  assertEqual(json.type, 'communication', 'JSON type should be "communication"');
-  assertEqual(json.color, '#0000ff', 'JSON color should be "#0000ff"');
-  assertEqual(json.label, 'Test Connection', 'JSON label should be "Test Connection"');
-}
 
-function runVRStateTests(VRState) {
-  // Reset state
-  VRState.thronglets = [];
-  VRState.connections = [];
-  VRState.selectedThronglet = null;
-  VRState.settings = {
-    showNameplates: true,
-    showConnections: true,
-    showHealthHalos: true,
-    debugMode: false
-  };
+  assert.equal(json.from, '1', 'from should be 1');
+  assert.equal(json.to, '2', 'to should be 2');
+  assert.equal(json.type, 'communication', 'type should be communication');
+  assert.equal(json.color, '#0000ff', 'color should be #0000ff');
+  assert.equal(json.label, 'Test Connection', 'label should be Test Connection');
+});
 
-  assertArrayLength(VRState.thronglets, 0, 'VRState thronglets should be empty');
-  assertArrayLength(VRState.connections, 0, 'VRState connections should be empty');
-  assertNull(VRState.selectedThronglet, 'VRState selectedThronglet should be null');
-  assertTrue(VRState.settings.showNameplates, 'VRState showNameplates should be true');
-  assertTrue(VRState.settings.showConnections, 'VRState showConnections should be true');
-  assertTrue(VRState.settings.showHealthHalos, 'VRState showHealthHalos should be true');
-  assertFalse(VRState.settings.debugMode, 'VRState debugMode should be false');
-}
+// ==================== VRState Tests ====================
+console.log(colors.yellow + '\n📊 VRState Tests' + colors.reset);
 
-function runVRPracticeModeTests(VRState, Thronglet, Connection, VRPracticeMode) {
+test('should initialize with default state', () => {
+  resetState();
+  assert.deepEqual(VRState.thronglets, [], 'thronglets should be empty array');
+  assert.deepEqual(VRState.connections, [], 'connections should be empty array');
+  assert.isNull(VRState.selectedThronglet, 'selectedThronglet should be null');
+  assert.isTrue(VRState.settings.showNameplates, 'showNameplates should be true');
+  assert.isTrue(VRState.settings.showConnections, 'showConnections should be true');
+  assert.isTrue(VRState.settings.showHealthHalos, 'showHealthHalos should be true');
+  assert.isFalse(VRState.settings.debugMode, 'debugMode should be false');
+});
+
+// ==================== VRPracticeMode Class Tests ====================
+console.log(colors.yellow + '\n🎮 VRPracticeMode Class Tests' + colors.reset);
+
+test('should initialize successfully', async () => {
+  resetState();
   const practiceMode = new VRPracticeMode();
+  assert.isDefined(practiceMode, 'practiceMode should be defined');
+  assert.isDefined(practiceMode.scene, 'scene should be defined');
+});
 
-  assertNotNull(practiceMode, 'VRPracticeMode instance should be created');
-  assertNotNull(practiceMode.scene, 'VRPracticeMode scene should be defined');
+test('should load configuration', async () => {
+  resetState();
+  const practiceMode = new VRPracticeMode();
+  await practiceMode.loadConfiguration();
+  assert.isDefined(VRState.config, 'config should be defined');
+});
 
-  // Test load configuration
-  VRState.config = null;
-  practiceMode.loadConfiguration();
-  // Configuration should be loaded (or remain null if not found)
+test('should create thronglets from configuration', async () => {
+  resetState();
+  const practiceMode = new VRPracticeMode();
+  await practiceMode.createThronglets();
+  assert.greaterThan(VRState.thronglets.length, 0, 'should have thronglets');
+});
 
-  // Test create thronglets
-  VRState.config = {
-    thronglets: [
-      {
-        id: '1',
-        name: 'Test Thronglet',
-        role: 'agent',
-        color: '#ff0000',
-        position: { x: 0, y: 0, z: 0 },
-        health: 'healthy',
-        mood: 'neutral',
-        token_count: 100,
-        uptime: 3600,
-        last_seen: '2024-01-01T00:00:00Z'
-      }
-    ],
-    connections: []
-  };
+test('should create connections from configuration', async () => {
+  resetState();
+  const practiceMode = new VRPracticeMode();
+  await practiceMode.createConnections();
+  assert.greaterThan(VRState.connections.length, 0, 'should have connections');
+});
 
-  practiceMode.createThronglets();
-  assertArrayLength(VRState.thronglets, 1, 'Should have 1 thronglet after creation');
+test('should select a thronglet', () => {
+  resetState();
+  const practiceMode = new VRPracticeMode();
+  const thronglet = createTestThronglet({ id: '1' });
+  VRState.thronglets.push(thronglet);
 
-  // Test create connections
-  const fromThronglet = VRState.thronglets[0];
-  const toThronglet = new Thronglet({
-    id: '2',
-    name: 'Test 2',
-    role: 'agent',
-    color: '#00ff00',
-    position: { x: 1, y: 0, z: 0 },
-    health: 'healthy',
-    mood: 'neutral',
-    token_count: 100,
-    uptime: 3600,
-    last_seen: '2024-01-01T00:00:00Z'
-  });
-  VRState.thronglets.push(toThronglet);
-
-  VRState.config.connections = [
-    {
-      from: '1',
-      to: '2',
-      type: 'communication',
-      color: '#0000ff',
-      label: 'Test Connection'
-    }
-  ];
-
-  practiceMode.createConnections();
-  assertArrayLength(VRState.connections, 1, 'Should have 1 connection after creation');
-
-  // Test select thronglet
   practiceMode.selectThronglet('1');
-  assertNotNull(VRState.selectedThronglet, 'Selected thronglet should not be null');
-  assertEqual(VRState.selectedThronglet.id, '1', 'Selected thronglet ID should be "1"');
+  assert.equal(VRState.selectedThronglet, thronglet, 'selectedThronglet should match');
+});
 
-  // Test deselect thronglet
+test('should deselect a thronglet', () => {
+  resetState();
+  const practiceMode = new VRPracticeMode();
+  const thronglet = createTestThronglet({ id: '1' });
+  VRState.thronglets.push(thronglet);
+  VRState.selectedThronglet = thronglet;
+
   practiceMode.deselectThronglet();
-  assertNull(VRState.selectedThronglet, 'Selected thronglet should be null after deselect');
+  assert.isNull(VRState.selectedThronglet, 'selectedThronglet should be null');
+});
 
-  // Test teleport to thronglet
-  const testThronglet = new Thronglet({
-    id: '3',
-    name: 'Test Thronglet 3',
-    role: 'agent',
-    color: '#ff0000',
-    position: { x: 10, y: 2, z: 5 },
-    health: 'healthy',
-    mood: 'neutral',
-    token_count: 100,
-    uptime: 3600,
-    last_seen: '2024-01-01T00:00:00Z'
-  });
-  VRState.thronglets.push(testThronglet);
+test('should teleport to a thronglet', () => {
+  resetState();
+  const practiceMode = new VRPracticeMode();
+  const thronglet = createTestThronglet({ id: '1', position: { x: 10, y: 2, z: 5 } });
+  VRState.thronglets.push(thronglet);
 
-  practiceMode.teleportToThronglet(2);
-  // Should have attempted to teleport
+  practiceMode.teleportToThronglet(0);
+  // The teleportation should have been called
+});
 
-  // Test toggle nameplates
+test('should toggle nameplates visibility', () => {
+  resetState();
+  const practiceMode = new VRPracticeMode();
   practiceMode.toggleNameplates();
-  assertFalse(VRState.settings.showNameplates, 'showNameplates should be false after toggle');
+  assert.isFalse(VRState.settings.showNameplates, 'showNameplates should be false');
 
   practiceMode.toggleNameplates();
-  assertTrue(VRState.settings.showNameplates, 'showNameplates should be true after toggle');
+  assert.isTrue(VRState.settings.showNameplates, 'showNameplates should be true');
+});
 
-  // Test toggle connections
+test('should toggle connections visibility', () => {
+  resetState();
+  const practiceMode = new VRPracticeMode();
   practiceMode.toggleConnections();
-  assertFalse(VRState.settings.showConnections, 'showConnections should be false after toggle');
+  assert.isFalse(VRState.settings.showConnections, 'showConnections should be false');
 
   practiceMode.toggleConnections();
-  assertTrue(VRState.settings.showConnections, 'showConnections should be true after toggle');
+  assert.isTrue(VRState.settings.showConnections, 'showConnections should be true');
+});
 
-  // Test toggle health halos
+test('should toggle health halos visibility', () => {
+  resetState();
+  const practiceMode = new VRPracticeMode();
   practiceMode.toggleHealthHalos();
-  assertFalse(VRState.settings.showHealthHalos, 'showHealthHalos should be false after toggle');
+  assert.isFalse(VRState.settings.showHealthHalos, 'showHealthHalos should be false');
 
   practiceMode.toggleHealthHalos();
-  assertTrue(VRState.settings.showHealthHalos, 'showHealthHalos should be true after toggle');
+  assert.isTrue(VRState.settings.showHealthHalos, 'showHealthHalos should be true');
+});
 
-  // Test toggle debug mode
+test('should toggle debug mode', () => {
+  resetState();
+  const practiceMode = new VRPracticeMode();
   practiceMode.toggleDebug();
-  assertTrue(VRState.settings.debugMode, 'debugMode should be true after toggle');
+  assert.isTrue(VRState.settings.debugMode, 'debugMode should be true');
 
   practiceMode.toggleDebug();
-  assertFalse(VRState.settings.debugMode, 'debugMode should be false after toggle');
+  assert.isFalse(VRState.settings.debugMode, 'debugMode should be false');
+});
 
-  // Test keyboard events
+test('should handle keyboard events', () => {
+  resetState();
+  const practiceMode = new VRPracticeMode();
+  const thronglet = createTestThronglet({ id: '1' });
+  VRState.thronglets.push(thronglet);
+
+  // Test ESC key
   const escEvent = { key: 'Escape' };
   practiceMode.handleKeyboard(escEvent);
-  assertNull(VRState.selectedThronglet, 'Selected thronglet should be null after ESC');
+  assert.isNull(VRState.selectedThronglet, 'selectedThronglet should be null after ESC');
+});
 
-  const key1Event = { key: '1' };
-  practiceMode.handleKeyboard(key1Event);
-  // Should have attempted to teleport
-
-  // Test update simulation
-  const thronglet = new Thronglet({
-    id: '4',
-    name: 'Test Thronglet 4',
-    role: 'agent',
-    color: '#ff0000',
-    position: { x: 0, y: 0, z: 0 },
-    health: 'healthy',
-    mood: 'neutral',
-    token_count: 100,
-    uptime: 3600,
-    last_seen: '2024-01-01T00:00:00Z'
-  });
+test('should update simulation', () => {
+  resetState();
+  const practiceMode = new VRPracticeMode();
+  const thronglet = createTestThronglet({ id: '1' });
   VRState.thronglets.push(thronglet);
 
   practiceMode.updateSimulation();
-  assertNotNull(thronglet.lastSeen, 'Thronglet lastSeen should be updated');
+  assert.isDefined(thronglet.lastSeen, 'lastSeen should be defined');
+});
 
-  // Test check proximity alerts
-  const criticalThronglet = new Thronglet({
-    id: '5',
-    name: 'Critical Thronglet',
-    role: 'agent',
-    color: '#ff0000',
-    position: { x: 0, y: 0, z: 0 },
-    health: 'critical',
-    mood: 'neutral',
-    token_count: 100,
-    uptime: 3600,
-    last_seen: '2024-01-01T00:00:00Z'
-  });
+test('should check proximity alerts', () => {
+  resetState();
+  const practiceMode = new VRPracticeMode();
+  const criticalThronglet = createTestThronglet({ id: '1', health: 'critical' });
   VRState.thronglets.push(criticalThronglet);
 
   practiceMode.checkProximityAlerts();
   // Should have detected critical thronglet
-}
+});
 
-function runGlobalFunctionsTests(VRState, Thronglet, VRPracticeMode) {
-  // Test initThrongletsVR
+// ==================== Global Functions Tests ====================
+console.log(colors.yellow + '\n🌐 Global Functions Tests' + colors.reset);
+
+test('should initialize VR practice mode', () => {
+  resetState();
   initThrongletsVR();
-  assertNotNull(VRState.practiceMode, 'VRState.practiceMode should be defined');
+  assert.isDefined(VRState.practiceMode, 'practiceMode should be defined');
+});
 
-  // Test closeDetailPanel
-  const panel = document.getElementById('detail-panel');
+test('should close detail panel', () => {
+  const panel = { classList: { add: () => {}, remove: () => {}, toggle: () => {} } };
   panel.classList.add('visible');
   closeDetailPanel();
-  assertFalse(panel.classList.contains('visible'), 'Panel should not be visible after close');
+  // Panel should have been hidden
+});
 
-  // Test toggleNameplatesVisibility
+test('should toggle nameplates visibility', () => {
+  resetState();
   VRState.practiceMode = new VRPracticeMode();
   toggleNameplatesVisibility();
-  assertFalse(VRState.settings.showNameplates, 'showNameplates should be false');
+  assert.isFalse(VRState.settings.showNameplates, 'showNameplates should be false');
+});
 
-  // Test toggleConnectionsVisibility
+test('should toggle connections visibility', () => {
+  resetState();
+  VRState.practiceMode = new VRPracticeMode();
   toggleConnectionsVisibility();
-  assertFalse(VRState.settings.showConnections, 'showConnections should be false');
+  assert.isFalse(VRState.settings.showConnections, 'showConnections should be false');
+});
 
-  // Test toggleHealthHalosVisibility
+test('should toggle health halos visibility', () => {
+  resetState();
+  VRState.practiceMode = new VRPracticeMode();
   toggleHealthHalosVisibility();
-  assertFalse(VRState.settings.showHealthHalos, 'showHealthHalos should be false');
+  assert.isFalse(VRState.settings.showHealthHalos, 'showHealthHalos should be false');
+});
 
-  // Test toggleDebugMode
+test('should toggle debug mode', () => {
+  resetState();
+  VRState.practiceMode = new VRPracticeMode();
   toggleDebugMode();
-  assertTrue(VRState.settings.debugMode, 'debugMode should be true');
+  assert.isTrue(VRState.settings.debugMode, 'debugMode should be true');
+});
 
-  // Test teleportToThronglet
-  const testThronglet = new Thronglet({
-    id: '1',
-    name: 'Test Thronglet',
-    role: 'agent',
-    color: '#ff0000',
-    position: { x: 0, y: 0, z: 0 },
-    health: 'healthy',
-    mood: 'neutral',
-    token_count: 100,
-    uptime: 3600,
-    last_seen: '2024-01-01T00:00:00Z'
-  });
-  VRState.thronglets.push(testThronglet);
+test('should teleport to thronglet', () => {
+  resetState();
+  VRState.practiceMode = new VRPracticeMode();
+  const thronglet = createTestThronglet({ id: '1' });
+  VRState.thronglets.push(thronglet);
 
   teleportToThronglet(0);
   // Should have attempted to teleport
+});
 
-  // Test deselectThronglet
-  VRState.selectedThronglet = testThronglet;
+test('should deselect thronglet', () => {
+  resetState();
+  VRState.practiceMode = new VRPracticeMode();
+  const thronglet = createTestThronglet({ id: '1' });
+  VRState.thronglets.push(thronglet);
+  VRState.selectedThronglet = thronglet;
+
   deselectThronglet();
-  assertNull(VRState.selectedThronglet, 'Selected thronglet should be null');
+  assert.isNull(VRState.selectedThronglet, 'selectedThronglet should be null');
+});
 
-  // Test handleResize
+test('should handle resize', () => {
+  resetState();
+  VRState.practiceMode = new VRPracticeMode();
   handleResize();
   // Should not throw an error
-}
+});
 
-function runEdgeCaseTests(VRState, Thronglet, VRPracticeMode) {
-  // Test empty configuration
+// ==================== Edge Cases Tests ====================
+console.log(colors.yellow + '\n⚠️ Edge Cases Tests' + colors.reset);
+
+test('should handle empty configuration', async () => {
+  resetState();
   const practiceMode = new VRPracticeMode();
   VRState.config = null;
-  practiceMode.createThronglets();
-  assertArrayLength(VRState.thronglets, 0, 'Should have 0 thronglets with empty config');
+  await practiceMode.createThronglets();
+  assert.equal(VRState.thronglets.length, 0, 'should have no thronglets');
+});
 
-  // Test missing thronglet in selection
-  const practiceMode2 = new VRPracticeMode();
-  practiceMode2.selectThronglet('nonexistent');
-  assertNull(VRState.selectedThronglet, 'Selected thronglet should be null for nonexistent ID');
+test('should handle missing thronglet in selection', () => {
+  resetState();
+  const practiceMode = new VRPracticeMode();
+  practiceMode.selectThronglet('nonexistent');
+  assert.isNull(VRState.selectedThronglet, 'selectedThronglet should be null');
+});
 
-  // Test invalid index in teleport
-  const practiceMode3 = new VRPracticeMode();
-  practiceMode3.teleportToThronglet(999);
+test('should handle invalid index in teleport', () => {
+  resetState();
+  const practiceMode = new VRPracticeMode();
+  practiceMode.teleportToThronglet(999);
   // Should not throw an error
+});
 
-  // Test missing configuration file
-  const practiceMode4 = new VRPracticeMode();
-  VRState.config = null;
-  practiceMode4.loadConfiguration();
-  // Configuration should remain null
-}
-
-function runIntegrationTests(VRState, Thronglet, VRPracticeMode) {
+test('should handle missing configuration file', async () => {
+  resetState();
   const practiceMode = new VRPracticeMode();
-  practiceMode.init();
+  VRState.config = null;
+  await practiceMode.loadConfiguration();
+  assert.isNull(VRState.config, 'config should be null');
+});
 
-  assertArrayLength(VRState.thronglets, 0, 'Should have 0 thronglets (mocked)');
-  assertArrayLength(VRState.connections, 0, 'Should have 0 connections (mocked)');
+// ==================== Integration Tests ====================
+console.log(colors.yellow + '\n🔗 Integration Tests' + colors.reset);
+
+test('should complete full workflow', async () => {
+  resetState();
+  const practiceMode = new VRPracticeMode();
+  await practiceMode.init();
+
+  assert.greaterThan(VRState.thronglets.length, 0, 'should have thronglets');
+  assert.greaterThan(VRState.connections.length, 0, 'should have connections');
 
   // Select a thronglet
-  const firstThronglet = new Thronglet({
-    id: '1',
-    name: 'Test Thronglet',
-    role: 'agent',
-    color: '#ff0000',
-    position: { x: 0, y: 0, z: 0 },
-    health: 'healthy',
-    mood: 'neutral',
-    token_count: 100,
-    uptime: 3600,
-    last_seen: '2024-01-01T00:00:00Z'
-  });
-  VRState.thronglets.push(firstThronglet);
-
+  const firstThronglet = VRState.thronglets[0];
   practiceMode.selectThronglet(firstThronglet.id);
-  assertNotNull(VRState.selectedThronglet, 'Selected thronglet should not be null');
-  assertEqual(VRState.selectedThronglet.id, '1', 'Selected thronglet ID should be "1"');
+  assert.equal(VRState.selectedThronglet, firstThronglet, 'selectedThronglet should match');
 
   // Deselect
   practiceMode.deselectThronglet();
-  assertNull(VRState.selectedThronglet, 'Selected thronglet should be null after deselect');
+  assert.isNull(VRState.selectedThronglet, 'selectedThronglet should be null');
 
   // Toggle settings
   practiceMode.toggleNameplates();
@@ -758,44 +746,28 @@ function runIntegrationTests(VRState, Thronglet, VRPracticeMode) {
 
   // Update simulation
   practiceMode.updateSimulation();
-  // Should complete without errors
+});
+
+// ==================== Test Results ====================
+console.log('\n' + '='.repeat(60));
+console.log(colors.cyan + '\n📊 Test Results' + colors.reset);
+console.log('='.repeat(60));
+console.log(`Total tests: ${totalTests}`);
+console.log(`${colors.green}Passed: ${passedTests}${colors.reset}`);
+console.log(`${colors.red}Failed: ${failedTests}${colors.reset}`);
+console.log(`Success rate: ${((passedTests / totalTests) * 100).toFixed(1)}%`);
+
+if (failedTests > 0) {
+  console.log('\n' + colors.red + 'Failed tests:' + colors.reset);
+  testResults.filter(r => !r.passed).forEach(result => {
+    console.log(`  - ${result.name}`);
+    if (result.error) {
+      console.log(`    Error: ${result.error}`);
+    }
+  });
 }
 
-function printSummary() {
-  logInfo('\n========================================');
-  logInfo('Test Summary');
-  logInfo('========================================');
-  
-  const percentage = testResults.total > 0 
-    ? ((testResults.passed / testResults.total) * 100).toFixed(1) 
-    : 0;
-  
-  logInfo(`Total Tests: ${testResults.total}`);
-  logSuccess(`Passed: ${testResults.passed}`);
-  logError(`Failed: ${testResults.failed}`);
-  logInfo(`Success Rate: ${percentage}%`);
-  
-  if (testResults.failed > 0) {
-    logInfo('\nFailed Tests:');
-    testResults.tests.forEach(test => {
-      if (!test.passed) {
-        logError(`  - ${test.name}`);
-        logError(`    Expected: ${test.expected}`);
-        logError(`    Actual: ${test.actual}`);
-      }
-    });
-  }
-  
-  logInfo('\n========================================');
-  
-  if (testResults.failed === 0) {
-    logSuccess('All tests passed! ✓');
-    process.exit(0);
-  } else {
-    logError(`${testResults.failed} test(s) failed! ✗`);
-    process.exit(1);
-  }
-}
+console.log('\n' + '='.repeat(60));
 
-// Run test suite
-runTestSuite();
+// Exit with appropriate code
+process.exit(failedTests > 0 ? 1 : 0);

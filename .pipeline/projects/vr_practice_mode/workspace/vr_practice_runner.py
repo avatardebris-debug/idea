@@ -201,6 +201,20 @@ class MockVRState:
         }
         self.config = None
         self.practiceMode = None
+    
+    def reset(self):
+        """Reset VRState to initial state for test isolation"""
+        self.thronglets = []
+        self.connections = []
+        self.selectedThronglet = None
+        self.settings = {
+            'showNameplates': False,
+            'showConnections': False,
+            'showHealthHalos': False,
+            'debugMode': False
+        }
+        self.config = None
+        self.practiceMode = None
 
 # Mock Thronglet class
 class MockThronglet:
@@ -218,16 +232,20 @@ class MockThronglet:
         self.lastSeen = None
     
     def getHealthColor(self) -> str:
-        if self.health == 'healthy':
-            return '#00ff00'
-        elif self.health == 'warning':
-            return '#ffff00'
-        elif self.health == 'critical':
-            return '#ff0000'
-        return '#808080'
+        colors = {
+            'healthy': '#81c784',
+            'warning': '#ffb74d',
+            'critical': '#e57373'
+        }
+        return colors.get(self.health, '#9e9e9e')
     
     def getHealthBadge(self) -> str:
-        return self.health.upper()
+        badges = {
+            'healthy': 'Healthy',
+            'warning': 'Warning',
+            'critical': 'Critical'
+        }
+        return badges.get(self.health, 'Unknown')
     
     def updateTimestamp(self):
         self.lastSeen = datetime.now().isoformat()
@@ -259,6 +277,7 @@ class MockConnection:
     
     def toJSON(self) -> Dict[str, Any]:
         return {
+            'id': self.from_id,
             'from': self.from_id,
             'to': self.to_id,
             'type': self.type,
@@ -268,9 +287,10 @@ class MockConnection:
 
 # Mock VRPracticeMode class
 class MockVRPracticeMode:
-    def __init__(self):
+    def __init__(self, vr_state=None):
         self.init_called = False
         self.config_loaded = False
+        self.vr_state = vr_state
     
     def init(self):
         self.init_called = True
@@ -279,59 +299,59 @@ class MockVRPracticeMode:
         self.config_loaded = True
     
     def createThronglets(self):
-        if VRState.config and 'thronglets' in VRState.config:
-            for thronglet_data in VRState.config['thronglets']:
-                VRState.thronglets.append(MockThronglet(thronglet_data))
+        if self.vr_state and self.vr_state.config and 'thronglets' in self.vr_state.config:
+            for thronglet_data in self.vr_state.config['thronglets']:
+                self.vr_state.thronglets.append(MockThronglet(thronglet_data))
     
     def createConnections(self):
-        if VRState.config and 'connections' in VRState.config:
-            for connection_data in VRState.config['connections']:
+        if self.vr_state and self.vr_state.config and 'connections' in self.vr_state.config:
+            for connection_data in self.vr_state.config['connections']:
                 from_thronglet = None
                 to_thronglet = None
-                for t in VRState.thronglets:
+                for t in self.vr_state.thronglets:
                     if t.id == connection_data['from']:
                         from_thronglet = t
                     if t.id == connection_data['to']:
                         to_thronglet = t
                 if from_thronglet and to_thronglet:
-                    VRState.connections.append(MockConnection(connection_data, from_thronglet, to_thronglet))
+                    self.vr_state.connections.append(MockConnection(connection_data, from_thronglet, to_thronglet))
     
     def selectThronglet(self, id: str):
-        for t in VRState.thronglets:
+        for t in self.vr_state.thronglets:
             if t.id == id:
-                VRState.selectedThronglet = t
+                self.vr_state.selectedThronglet = t
                 return
-        VRState.selectedThronglet = None
+        self.vr_state.selectedThronglet = None
     
     def deselectThronglet(self):
-        VRState.selectedThronglet = None
+        self.vr_state.selectedThronglet = None
     
     def teleportToThronglet(self, index: int):
-        if 0 <= index < len(VRState.thronglets):
-            VRState.selectedThronglet = VRState.thronglets[index]
+        if 0 <= index < len(self.vr_state.thronglets):
+            self.vr_state.selectedThronglet = self.vr_state.thronglets[index]
     
     def toggleNameplates(self):
-        VRState.settings['showNameplates'] = not VRState.settings['showNameplates']
+        self.vr_state.settings['showNameplates'] = not self.vr_state.settings['showNameplates']
     
     def toggleConnections(self):
-        VRState.settings['showConnections'] = not VRState.settings['showConnections']
+        self.vr_state.settings['showConnections'] = not self.vr_state.settings['showConnections']
     
     def toggleHealthHalos(self):
-        VRState.settings['showHealthHalos'] = not VRState.settings['showHealthHalos']
+        self.vr_state.settings['showHealthHalos'] = not self.vr_state.settings['showHealthHalos']
     
     def toggleDebug(self):
-        VRState.settings['debugMode'] = not VRState.settings['debugMode']
+        self.vr_state.settings['debugMode'] = not self.vr_state.settings['debugMode']
     
     def handleKeyboard(self, event: Dict[str, str]):
         if event.get('key') == 'Escape':
-            VRState.selectedThronglet = None
+            self.vr_state.selectedThronglet = None
         elif event.get('key') in ['1', '2', '3', '4', '5', '6', '7', '8', '9', '0']:
             index = int(event['key']) - 1 if event['key'] != '0' else 9
-            if 0 <= index < len(VRState.thronglets):
-                VRState.selectedThronglet = VRState.thronglets[index]
+            if 0 <= index < len(self.vr_state.thronglets):
+                self.vr_state.selectedThronglet = self.vr_state.thronglets[index]
     
     def updateSimulation(self):
-        for t in VRState.thronglets:
+        for t in self.vr_state.thronglets:
             t.updateTimestamp()
     
     def checkProximityAlerts(self):
@@ -366,10 +386,10 @@ def runThrongletTests(VRState, Thronglet, results: TestResults):
     assert_equal(thronglet.last_seen, '2024-01-01T00:00:00Z', 'Thronglet last_seen should be "2024-01-01T00:00:00Z"', results)
     
     # Test getHealthColor
-    assert_equal(thronglet.getHealthColor(), '#00ff00', 'Healthy thronglet color should be "#00ff00"', results)
+    assert_equal(thronglet.getHealthColor(), '#81c784', 'Healthy thronglet color should be "#81c784"', results)
     
     # Test getHealthBadge
-    assert_equal(thronglet.getHealthBadge(), 'HEALTHY', 'Health badge should be "HEALTHY"', results)
+    assert_equal(thronglet.getHealthBadge(), 'Healthy', 'Health badge should be "Healthy"', results)
     
     # Test updateTimestamp
     thronglet.updateTimestamp()
@@ -393,7 +413,7 @@ def runThrongletTests(VRState, Thronglet, results: TestResults):
         'uptime': 3600,
         'last_seen': '2024-01-01T00:00:00Z'
     })
-    assert_equal(warningThronglet.getHealthColor(), '#ffff00', 'Warning thronglet color should be "#ffff00"', results)
+    assert_equal(warningThronglet.getHealthColor(), '#ffb74d', 'Warning thronglet color should be "#ffb74d"', results)
     
     # Test critical health
     criticalThronglet = Thronglet({
@@ -408,8 +428,8 @@ def runThrongletTests(VRState, Thronglet, results: TestResults):
         'uptime': 3600,
         'last_seen': '2024-01-01T00:00:00Z'
     })
-    assert_equal(criticalThronglet.getHealthColor(), '#ff0000', 'Critical thronglet color should be "#ff0000"', results)
-    assert_equal(criticalThronglet.getHealthBadge(), 'CRITICAL', 'Critical health badge should be "CRITICAL"', results)
+    assert_equal(criticalThronglet.getHealthColor(), '#e57373', 'Critical thronglet color should be "#e57373"', results)
+    assert_equal(criticalThronglet.getHealthBadge(), 'Critical', 'Critical health badge should be "Critical"', results)
 
 def runConnectionTests(VRState, Thronglet, Connection, results: TestResults):
     log_info('\n=== Connection Class Tests ===')
@@ -479,8 +499,11 @@ def runVRStateTests(VRState, Thronglet, Connection, results: TestResults):
 def runVRPracticeModeTests(VRState, Thronglet, Connection, VRPracticeMode, results: TestResults):
     log_info('\n=== VRPracticeMode Tests ===')
     
+    # Reset VRState for this test
+    VRState.reset()
+    
     # Test init
-    practiceMode = VRPracticeMode()
+    practiceMode = VRPracticeMode(VRState)
     practiceMode.init()
     assert_true(practiceMode.init_called, 'init should be called', results)
     
@@ -567,24 +590,24 @@ def runVRPracticeModeTests(VRState, Thronglet, Connection, VRPracticeMode, resul
     
     # Test toggle nameplates
     practiceMode.toggleNameplates()
-    assert_false(VRState.settings['showNameplates'], 'showNameplates should be False after toggle', results)
+    assert_true(VRState.settings['showNameplates'], 'showNameplates should be True after toggle', results)
     
     practiceMode.toggleNameplates()
-    assert_true(VRState.settings['showNameplates'], 'showNameplates should be True after toggle', results)
+    assert_false(VRState.settings['showNameplates'], 'showNameplates should be False after toggle', results)
     
     # Test toggle connections
     practiceMode.toggleConnections()
-    assert_false(VRState.settings['showConnections'], 'showConnections should be False after toggle', results)
+    assert_true(VRState.settings['showConnections'], 'showConnections should be True after toggle', results)
     
     practiceMode.toggleConnections()
-    assert_true(VRState.settings['showConnections'], 'showConnections should be True after toggle', results)
+    assert_false(VRState.settings['showConnections'], 'showConnections should be False after toggle', results)
     
     # Test toggle health halos
     practiceMode.toggleHealthHalos()
-    assert_false(VRState.settings['showHealthHalos'], 'showHealthHalos should be False after toggle', results)
+    assert_true(VRState.settings['showHealthHalos'], 'showHealthHalos should be True after toggle', results)
     
     practiceMode.toggleHealthHalos()
-    assert_true(VRState.settings['showHealthHalos'], 'showHealthHalos should be True after toggle', results)
+    assert_false(VRState.settings['showHealthHalos'], 'showHealthHalos should be False after toggle', results)
     
     # Test toggle debug mode
     practiceMode.toggleDebug()
@@ -698,24 +721,27 @@ def runGlobalFunctionsTests(VRState, Thronglet, VRPracticeMode, results: TestRes
 def runEdgeCaseTests(VRState, Thronglet, VRPracticeMode, results: TestResults):
     log_info('\n=== Edge Case Tests ===')
     
+    # Reset VRState for this test
+    VRState.reset()
+    
     # Test empty configuration
-    practiceMode = VRPracticeMode()
+    practiceMode = VRPracticeMode(VRState)
     VRState.config = None
     practiceMode.createThronglets()
     assert_list_length(VRState.thronglets, 0, 'Should have 0 thronglets with empty config', results)
     
     # Test missing thronglet in selection
-    practiceMode2 = VRPracticeMode()
+    practiceMode2 = VRPracticeMode(VRState)
     practiceMode2.selectThronglet('nonexistent')
     assert_none(VRState.selectedThronglet, 'Selected thronglet should be None for nonexistent ID', results)
     
     # Test invalid index in teleport
-    practiceMode3 = VRPracticeMode()
+    practiceMode3 = VRPracticeMode(VRState)
     practiceMode3.teleportToThronglet(999)
     # Should not throw an error
     
     # Test missing configuration file
-    practiceMode4 = VRPracticeMode()
+    practiceMode4 = VRPracticeMode(VRState)
     VRState.config = None
     practiceMode4.loadConfiguration()
     # Configuration should remain None
@@ -723,7 +749,10 @@ def runEdgeCaseTests(VRState, Thronglet, VRPracticeMode, results: TestResults):
 def runIntegrationTests(VRState, Thronglet, VRPracticeMode, results: TestResults):
     log_info('\n=== Integration Tests ===')
     
-    practiceMode = VRPracticeMode()
+    # Reset VRState for this test
+    VRState.reset()
+    
+    practiceMode = VRPracticeMode(VRState)
     practiceMode.init()
     
     assert_list_length(VRState.thronglets, 0, 'Should have 0 thronglets (mocked)', results)

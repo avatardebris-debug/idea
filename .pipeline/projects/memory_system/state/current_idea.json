@@ -4,5 +4,6 @@
   "status": "phase_2_validating",
   "total_phases": 6,
   "tasks_done": 6,
-  "tasks_total": 62
+  "tasks_total": 62,
+  "phase": 2
 }

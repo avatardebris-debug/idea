@@ -11,15 +11,21 @@ const VRState = {
   thronglets: [],
   connections: [],
   selectedThronglet: null,
+  grabbedThronglet: null,
+  grabOriginPosition: null,
   config: null,
   settings: {
     showNameplates: true,
     showConnections: true,
     showHealthHalos: true,
+    showEnhancedConnections: true,
     debugMode: false
   },
   proximityAlerts: [],
-  lastUpdate: Date.now()
+  lastUpdate: Date.now(),
+  hoverTimeout: null,
+  hoverTarget: null,
+  isGrabbing: false
 };
 
 /**
@@ -45,6 +51,7 @@ class Thronglet {
 
   updateTimestamp() {
     this.lastSeen = new Date().toISOString();
+    return true;
   }
 
   getHealthColor() {
@@ -128,6 +135,7 @@ class VRPracticeMode {
       this.startSimulation();
       this.updateDebugPanel();
       console.log('✓ VR Practice Mode initialized successfully');
+      this.updateEnhancedConnectionsVisibility();
     } catch (error) {
       console.error('✗ Failed to initialize VR Practice Mode:', error);
       this.showError('Failed to initialize VR Practice Mode');
@@ -307,6 +315,7 @@ class VRPracticeMode {
     const midY = (fromPos.y + toPos.y) / 2 + 0.5;
     const midZ = (fromPos.z + toPos.z) / 2;
 
+    // Create main line
     const line = document.createElement('a-line');
     line.setAttribute('color', connection.color);
     line.setAttribute('opacity', '0.6');
@@ -318,8 +327,34 @@ class VRPracticeMode {
     line.setAttribute('data-from', connection.from);
     line.setAttribute('data-to', connection.to);
     
+    // Create glowing effect entity
+    const glow = document.createElement('a-entity');
+    glow.setAttribute('position', `${midX} ${midY} ${midZ}`);
+    glow.setAttribute('rotation', `0 ${angle * (180 / Math.PI)} 0`);
+    glow.setAttribute('scale', `1 ${distance} 1`);
+    glow.setAttribute('class', 'connection-glow');
+    
+    // Create pulsing light
+    const pulseLight = document.createElement('a-entity');
+    pulseLight.setAttribute('light', `type: point; color: ${connection.color}; intensity: 2; distance: 3`);
+    pulseLight.setAttribute('position', '0 0 0');
+    glow.appendChild(pulseLight);
+    
+    // Create animated glow ring
+    const glowRing = document.createElement('a-ring');
+    glowRing.setAttribute('radius-inner', '0.15');
+    glowRing.setAttribute('radius-outer', '0.25');
+    glowRing.setAttribute('color', connection.color);
+    glowRing.setAttribute('opacity', '0.5');
+    glowRing.setAttribute('position', '0 0 0');
+    glowRing.setAttribute('rotation', '90 0 0');
+    glowRing.setAttribute('animation__pulse', 'property: scale; from: 1 1 1; to: 1.5 1.5 1.5; dur: 2000; easing: easeInOutQuad; loop: true');
+    glow.appendChild(glowRing);
+    
     container.appendChild(line);
+    container.appendChild(glow);
     connection.line = line;
+    connection.glow = glow;
   }
 
   setupEventHandlers() {
@@ -331,6 +366,19 @@ class VRPracticeMode {
         const throngletId = target.getAttribute('data-id');
         this.selectThronglet(throngletId);
       }
+    });
+
+    // Raycaster hover handler for detail panel
+    this.scene.addEventListener('raycastermouseenter', (event) => {
+      const target = event.detail.target;
+      if (target && target.hasAttribute('data-id')) {
+        const throngletId = target.getAttribute('data-id');
+        this.startHoverTimer(throngletId);
+      }
+    });
+
+    this.scene.addEventListener('raycastermouseleave', (event) => {
+      this.clearHoverTimer();
     });
 
     // Keyboard handlers
@@ -351,6 +399,90 @@ class VRPracticeMode {
     document.addEventListener('exit-vr', () => {
       this.onExitVR();
     });
+
+    // Grab release handler
+    this.scene.addEventListener('grabend', (event) => {
+      if (event.detail.target && event.detail.target.hasAttribute('data-id')) {
+        const throngletId = event.detail.target.getAttribute('data-id');
+        this.releaseThronglet(throngletId);
+      }
+    });
+  }
+
+  startHoverTimer(throngletId) {
+    this.clearHoverTimer();
+    VRState.hoverTarget = throngletId;
+    
+    VRState.hoverTimeout = setTimeout(() => {
+      const thronglet = VRState.thronglets.find(t => t.id === throngletId);
+      if (thronglet) {
+        this.showDetailPanel(thronglet);
+        this.showProximityAlert(`Approaching ${thronglet.name}...`);
+      }
+    }, 1000);
+  }
+
+  clearHoverTimer() {
+    if (VRState.hoverTimeout) {
+      clearTimeout(VRState.hoverTimeout);
+      VRState.hoverTimeout = null;
+    }
+    VRState.hoverTarget = null;
+  }
+
+  // Grab mechanic methods
+  grabThronglet(throngletId) {
+    const thronglet = VRState.thronglets.find(t => t.id === throngletId);
+    if (!thronglet) return;
+
+    VRState.isGrabbing = true;
+    VRState.grabbedThronglet = thronglet;
+    VRState.grabOriginPosition = { ...thronglet.position };
+
+    // Trigger greeting animation
+    this.triggerGreetingAnimation(thronglet);
+
+    // Make thronglet follow the grabber
+    thronglet.mesh.setAttribute('position', { x: 0, y: 0, z: 0 });
+    thronglet.mesh.setAttribute('static-body', '');
+    thronglet.mesh.setAttribute('dynamic-body', '');
+  }
+
+  releaseThronglet(throngletId) {
+    const thronglet = VRState.thronglets.find(t => t.id === throngletId);
+    if (!thronglet || !VRState.isGrabbing) return;
+
+    VRState.isGrabbing = false;
+    VRState.grabbedThronglet = null;
+
+    // Restore thronglet to original position
+    if (VRState.grabOriginPosition) {
+      thronglet.mesh.setAttribute('position', VRState.grabOriginPosition);
+    }
+
+    // Restore physics
+    thronglet.mesh.removeAttribute('static-body');
+    thronglet.mesh.removeAttribute('dynamic-body');
+
+    // Reset greeting animation
+    thronglet.mesh.removeAttribute('animation__greeting');
+  }
+
+  triggerGreetingAnimation(thronglet) {
+    // Bounce animation
+    thronglet.mesh.setAttribute('animation__greeting', {
+      property: 'position',
+      to: { x: thronglet.position.x, y: thronglet.position.y + 0.5, z: thronglet.position.z },
+      dur: 300,
+      easing: 'easeOutQuad'
+    });
+
+    // Color flash
+    const originalColor = thronglet.color;
+    thronglet.mesh.setAttribute('material', 'color', '#ffffff');
+    setTimeout(() => {
+      thronglet.mesh.setAttribute('material', 'color', originalColor);
+    }, 300);
   }
 
   handleKeyboard(event) {
@@ -379,6 +511,13 @@ class VRPracticeMode {
     }
     if (event.key === 'D' || event.key === 'd') {
       this.toggleDebug();
+    }
+
+    // VR keyboard shortcut (V key)
+    if (event.key === 'V' || event.key === 'v') {
+      if (VRState.selectedThronglet) {
+        this.showVRKeyboard(VRState.selectedThronglet);
+      }
     }
   }
 
@@ -433,7 +572,182 @@ class VRPracticeMode {
 
     // Show panel
     panel.classList.add('visible');
-    document.body.style.overflow = 'hidden';
+    if (typeof document !== 'undefined' && document.body) {
+      document.body.style.overflow = 'hidden';
+    }
+  }
+
+  // VR Keyboard and Speech Bubble methods
+  showVRKeyboard(thronglet) {
+    if (!thronglet) return;
+
+    // Hide detail panel
+    const detailPanel = document.getElementById('detail-panel');
+    if (detailPanel) {
+      detailPanel.classList.remove('visible');
+    }
+
+    // Create or show VR keyboard
+    let keyboard = document.getElementById('vr-keyboard');
+    if (!keyboard) {
+      keyboard = this.createVRKeyboard();
+    }
+
+    keyboard.classList.add('visible');
+    VRState.activeKeyboardThronglet = thronglet;
+
+    // Focus input
+    const input = keyboard.querySelector('input');
+    if (input) {
+      input.focus();
+    }
+  }
+
+  createVRKeyboard() {
+    const keyboard = document.createElement('div');
+    keyboard.id = 'vr-keyboard';
+    keyboard.className = 'vr-keyboard';
+    keyboard.innerHTML = `
+      <div class="keyboard-header">
+        <span>Type a prompt for ${VRState.activeKeyboardThronglet?.name || 'Thronglet'}</span>
+        <button class="keyboard-close">×</button>
+      </div>
+      <div class="keyboard-body">
+        <input type="text" placeholder="Enter your prompt..." class="keyboard-input">
+        <div class="keyboard-buttons">
+          <button class="keyboard-btn" data-action="send">Send</button>
+          <button class="keyboard-btn" data-action="cancel">Cancel</button>
+        </div>
+      </div>
+    `;
+
+    document.body.appendChild(keyboard);
+
+    // Add event listeners
+    const closeBtn = keyboard.querySelector('.keyboard-close');
+    const sendBtn = keyboard.querySelector('[data-action="send"]');
+    const cancelBtn = keyboard.querySelector('[data-action="cancel"]');
+    const input = keyboard.querySelector('input');
+
+    closeBtn.addEventListener('click', () => this.hideVRKeyboard());
+    cancelBtn.addEventListener('click', () => this.hideVRKeyboard());
+
+    sendBtn.addEventListener('click', () => {
+      const prompt = input.value.trim();
+      if (prompt && VRState.activeKeyboardThronglet) {
+        this.sendPromptToThronglet(VRState.activeKeyboardThronglet, prompt);
+      }
+      this.hideVRKeyboard();
+    });
+
+    input.addEventListener('keypress', (e) => {
+      if (e.key === 'Enter') {
+        const prompt = input.value.trim();
+        if (prompt && VRState.activeKeyboardThronglet) {
+          this.sendPromptToThronglet(VRState.activeKeyboardThronglet, prompt);
+        }
+        this.hideVRKeyboard();
+      }
+    });
+
+    return keyboard;
+  }
+
+  hideVRKeyboard() {
+    const keyboard = document.getElementById('vr-keyboard');
+    if (keyboard) {
+      keyboard.classList.remove('visible');
+      setTimeout(() => keyboard.remove(), 300);
+    }
+    VRState.activeKeyboardThronglet = null;
+  }
+
+  sendPromptToThronglet(thronglet, prompt) {
+    if (!thronglet) return;
+
+    // Show speech bubble
+    this.showSpeechBubble(thronglet, prompt);
+
+    // Trigger response animation
+    this.triggerResponseAnimation(thronglet);
+
+    // Simulate AI response (in real implementation, this would call the backend)
+    const response = this.generateThrongletResponse(thronglet, prompt);
+    setTimeout(() => {
+      this.showSpeechBubble(thronglet, response, true);
+    }, 1000);
+  }
+
+  showSpeechBubble(thronglet, text, isResponse = false) {
+    // Remove existing bubble
+    const existingBubble = thronglet.mesh.querySelector('.speech-bubble');
+    if (existingBubble) {
+      existingBubble.remove();
+    }
+
+    // Create speech bubble
+    const bubble = document.createElement('a-text');
+    bubble.setAttribute('value', text);
+    bubble.setAttribute('color', isResponse ? '#4fc3f7' : '#ffffff');
+    bubble.setAttribute('align', 'center');
+    bubble.setAttribute('width', '4');
+    bubble.setAttribute('font', 'monospace');
+    bubble.setAttribute('position', `0 ${thronglet.position.y + 2} 0`);
+    bubble.setAttribute('class', 'speech-bubble');
+
+    // Add to thronglet entity
+    thronglet.mesh.appendChild(bubble);
+
+    // Animate bubble
+    bubble.setAttribute('animation', 'property: position; to: 0 ' + (thronglet.position.y + 2.5) + ' 0; dur: 500; easing: easeOutQuad');
+    setTimeout(() => {
+      bubble.setAttribute('animation', 'property: position; to: 0 ' + (thronglet.position.y + 2) + ' 0; dur: 500; easing: easeInQuad');
+    }, 2000);
+
+    // Remove after 3 seconds
+    setTimeout(() => {
+      if (bubble.parentNode) {
+        bubble.remove();
+      }
+    }, 3000);
+  }
+
+  triggerResponseAnimation(thronglet) {
+    // Random animation based on personality
+    const animations = [
+      { property: 'rotation', to: { x: 0, y: 360, z: 0 }, dur: 1000 },
+      { property: 'scale', to: { x: 1.2, y: 1.2, z: 1.2 }, dur: 500 },
+      { property: 'position', to: { x: thronglet.position.x, y: thronglet.position.y + 0.3, z: thronglet.position.z }, dur: 300 }
+    ];
+
+    const animation = animations[Math.floor(Math.random() * animations.length)];
+    thronglet.mesh.setAttribute('animation__response', animation);
+
+    setTimeout(() => {
+      thronglet.mesh.removeAttribute('animation__response');
+    }, animation.dur);
+  }
+
+  generateThrongletResponse(thronglet, prompt) {
+    // Simple response generation based on personality
+    const responses = {
+      happy: ["That's great! I'm happy to help!", "I love this! Let's do it!", "Fantastic idea!"],
+      neutral: ["I understand.", "That's interesting.", "I'll consider that."],
+      sad: ["I'm not sure about that...", "This is difficult for me.", "I need some time."],
+      angry: ["I don't like that!", "That's not acceptable!", "I'm frustrated!"],
+      excited: ["YES! Let's go!", "This is amazing!", "I can't wait!"],
+      anxious: ["I'm a bit nervous about this...", "Let me think carefully...", "I hope this works."],
+      overwhelmed: ["Too much! I can't handle this...", "I need a break...", "This is too complex."],
+      playful: ["Let's have fun with this!", "I'm feeling playful!", "Challenge accepted!"],
+      observant: ["I'm watching closely...", "Let me analyze this...", "I notice something interesting."],
+      analytical: ["Let me break this down...", "From a logical perspective...", "The data suggests..."],
+      calm: ["Everything will be fine.", "Take your time.", "I'm here to help."],
+      concerned: ["I'm a bit worried about this...", "Let's be careful...", "I have some concerns."],
+      distressed: ["I need help!", "This is overwhelming...", "I'm not doing well."]
+    };
+
+    const moodResponses = responses[thronglet.mood] || responses.neutral;
+    return moodResponses[Math.floor(Math.random() * moodResponses.length)];
   }
 
   teleportToThronglet(index) {
@@ -475,6 +789,21 @@ class VRPracticeMode {
     
     const button = document.getElementById('toggle-connections');
     button.classList.toggle('active', VRState.settings.showConnections);
+  }
+
+  toggleEnhancedConnections() {
+    VRState.settings.showEnhancedConnections = !VRState.settings.showEnhancedConnections;
+    this.updateEnhancedConnectionsVisibility();
+    
+    const button = document.getElementById('toggle-enhanced-connections');
+    button.classList.toggle('active', VRState.settings.showEnhancedConnections);
+  }
+
+  updateEnhancedConnectionsVisibility() {
+    const glows = document.querySelectorAll('.connection-glow');
+    glows.forEach(glow => {
+      glow.setAttribute('visible', VRState.settings.showEnhancedConnections);
+    });
   }
 
   toggleHealthHalos() {
@@ -589,7 +918,9 @@ function initThrongletsVR() {
 function closeDetailPanel() {
   const panel = document.getElementById('detail-panel');
   panel.classList.remove('visible');
-  document.body.style.overflow = '';
+  if (typeof document !== 'undefined' && document.body) {
+    document.body.style.overflow = '';
+  }
 }
 
 function toggleNameplatesVisibility() {

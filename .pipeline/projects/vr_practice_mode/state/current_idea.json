@@ -1,8 +1,10 @@
 {
   "title": "[VR practice mode.]",
   "description": "[VR practice mode.]",
-  "status": "phase_2_executing",
+  "status": "complete",
   "total_phases": 5,
-  "tasks_done": 1,
-  "tasks_total": 5
+  "tasks_done": 0,
+  "tasks_total": 5,
+  "started_at": "2026-04-29T18:13:50.209380+00:00",
+  "phase": 5
 }

@@ -1,0 +1,28 @@
+{
+  "progress": [
+    {
+      "concept_id": "test_concept",
+      "attempts": 234,
+      "average_score": 85.00000000000001,
+      "total_time_minutes": 5850,
+      "difficulty_rating": 7,
+      "last_attempt_date": "2026-04-30T08:59:18.967021"
+    },
+    {
+      "concept_id": "concept_1",
+      "attempts": 233,
+      "average_score": 85.0,
+      "total_time_minutes": 6990,
+      "difficulty_rating": null,
+      "last_attempt_date": "2026-04-30T08:59:18.985167"
+    },
+    {
+      "concept_id": "concept_2",
+      "attempts": 155,
+      "average_score": 90.0,
+      "total_time_minutes": 6975,
+      "difficulty_rating": null,
+      "last_attempt_date": "2026-04-30T08:59:18.985572"
+    }
+  ]
+}

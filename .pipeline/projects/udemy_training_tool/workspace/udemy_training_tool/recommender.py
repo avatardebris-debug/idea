@@ -138,7 +138,7 @@ def _normalize_student_count(num_students: int) -> float:
 
     Uses min-max normalization with:
       - min = 0 (imputed for 0 or negative)
-      - max = 200,000 (capped)
+      - max = 150,000 (capped)
 
     Returns:
         Normalized score between 0 and 100.
@@ -148,10 +148,10 @@ def _normalize_student_count(num_students: int) -> float:
         return 50.0
 
     # Cap at max
-    capped = min(num_students, 200_000)
+    capped = min(num_students, 150_000)
 
     # Min-max normalization
-    score = (capped / 200_000) * 100.0
+    score = (capped / 150_000) * 100.0
     return min(100.0, max(0.0, score))
 
 
@@ -181,7 +181,7 @@ def _normalize_lectures(num_lectures: int) -> float:
 
     Uses min-max normalization with:
       - min = 0 (imputed for 0 or negative)
-      - max = 400 (capped)
+      - max = 300 (capped)
 
     Returns:
         Normalized score between 0 and 100.
@@ -191,10 +191,10 @@ def _normalize_lectures(num_lectures: int) -> float:
         return 50.0
 
     # Cap at max
-    capped = min(num_lectures, 400)
+    capped = min(num_lectures, 300)
 
     # Min-max normalization
-    score = (capped / 400) * 100.0
+    score = (capped / 300) * 100.0
     return min(100.0, max(0.0, score))
 
 
