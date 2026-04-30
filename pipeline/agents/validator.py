@@ -159,6 +159,12 @@ def auto_install_workspace_deps(workspace: pathlib.Path) -> list[str]:
     installed: list[str] = []
     stdlib = _stdlib_modules()
 
+    # --- Baseline: always install pytest-timeout so hung tests don't freeze the validator ---
+    subprocess.run(
+        [sys.executable, "-m", "pip", "install", "pytest-timeout", "-q"],
+        capture_output=True, text=True,
+    )
+
     # --- Step 1: requirements.txt ---
     req = workspace / "requirements.txt"
     if req.exists():
@@ -325,7 +331,9 @@ class ValidatorAgent(AgentProcess):
             f"## Your Job — BE EFFICIENT (you have limited steps)\n"
             f"NOTE: Dependencies and a conftest.py (sys.path fix) have already been set up.\n\n"
             f"STEP 1: Run tests FIRST (most important):\n"
-            f"   `cd {workspace_path} && PYTHONPATH={workspace_path} python -m pytest -v --tb=short 2>&1`\n"
+            f"   `cd {workspace_path} && python -m pytest -v --tb=short --timeout=120 -p no:timeout 2>&1 || true`\n"
+            f"   The --timeout=120 flag kills any single test that hangs beyond 2 minutes.\n"
+            f"   If pytest-timeout is not installed: `pip install pytest-timeout -q` first, then run.\n"
             f"   If no test files exist, note 'No tests found'.\n\n"
             f"STEP 2: Check files with: `find {workspace_path} -name '*.py' | sort`\n"
             f"   A file is PRESENT if it appears ANYWHERE under the workspace (including subdirs).\n"
