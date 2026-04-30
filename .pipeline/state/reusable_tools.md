@@ -1,0 +1,6 @@
+- llmclient: **`LLMClient` Protocol + `MockLLMClient`** (`drop_servicing_tool/executor.py`) — A Protocol-based LLM client interface w (source: [drop servicing tool])
+- fill_prompt: **`fill_prompt` template engine** (`drop_servicing_tool/prompts.py`) — A simple `{{key}}` placeholder replacement functi (source: [drop servicing tool])
+- sopinput: **`SOPInput` / `SOPStep` / `SOP` Pydantic models** (`drop_servicing_tool/sop_schema.py`) — Well-structured Pydantic mode (source: [drop servicing tool])
+- validate_input: **`validate_input` helper** (`drop_servicing_tool/sop_schema.py`) — Generic input validation against a declared schema w (source: [drop servicing tool])
+- sops_dir: **`SOPS_DIR` / `PROMPTS_DIR` config pattern** (`drop_servicing_tool/config.py`) — Environment-variable-overridable path  (source: [drop servicing tool])
+- steplog: **`StepLog` dataclass** (`drop_servicing_tool/executor.py`) — A structured execution log entry with step name, prompt, o (source: [drop servicing tool])

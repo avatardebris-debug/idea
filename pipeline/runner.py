@@ -793,6 +793,9 @@ def _tick_project(
         if non_blocking_notes:
             _append_polish(project_dir, phase_num, non_blocking_notes)
 
+        # --- Extract reusable components from review (no LLM needed) ---
+        _extract_shared_libs(project_dir, review_path, workspace_path, title)
+
         _reset_retries(project_dir, phase_num)
 
         advanced = _advance_phase(bus, project_dir, state, phase_num, slug)
@@ -803,6 +806,97 @@ def _tick_project(
             print(f"  ➡️  '{title}' phase {phase_num} passed → advancing to phase {phase_num + 1}")
 
         return True
+
+
+
+def _extract_shared_libs(
+    project_dir: pathlib.Path,
+    review_path: str,
+    workspace_path: str,
+    title: str,
+) -> None:
+    """Post-hook: parse ## Reusable Components from review.md and copy files
+    to .pipeline/shared_libs/ + append to reusable_tools.md.
+
+    Runs after every clean reviewer pass — no LLM budget needed.
+    The reviewer LLM only needs to LIST components; we handle file copying.
+    """
+    import re as _re
+    import shutil as _shutil
+
+    run_dir   = project_dir.parent.parent.parent  # .pipeline/projects/slug -> idea impl/
+    shared    = run_dir / ".pipeline" / "shared_libs"
+    tools_log = run_dir / ".pipeline" / "state" / "reusable_tools.md"
+    review_full = project_dir / review_path
+
+    if not review_full.exists():
+        return
+    try:
+        review_text = review_full.read_text(encoding="utf-8", errors="replace")
+    except Exception:
+        return
+
+    # Extract the ## Reusable Components section (handles bold: **Reusable Components**)
+    m = _re.search(
+        r"(?:##\s*\*{0,2}Reusable Components\*{0,2})(.*?)(?=\n##\s|\Z)",
+        review_text, _re.DOTALL | _re.IGNORECASE,
+    )
+    if not m:
+        return
+    section = m.group(1).strip()
+    if not section or _re.search(r"\b(none|n/a|nothing)\b", section, _re.IGNORECASE):
+        return
+
+    ws_path = pathlib.Path(workspace_path) if workspace_path else project_dir / "workspace"
+    extracted: list[str] = []
+
+    for line in section.splitlines():
+        line = line.strip()
+        # Strip bullet markers: "- ", "* ", "1. ", "2. " etc.
+        line = _re.sub(r"^[-*\d]+[.)]\s*", "", line).strip()
+        if not line or len(line) < 8:
+            continue
+
+        # Strip leading backticks/code spans for the name
+        clean = _re.sub(r"`([^`]+)`", r"\1", line)
+
+        # Derive a safe component name from the first word/phrase before : or —
+        first_part = _re.split(r"[:\s—–]", clean)[0].strip().lower()
+        component_name = _re.sub(r"[^a-z0-9_]", "_", first_part).strip("_")[:40]
+        if not component_name or len(component_name) < 2:
+            continue
+
+        # Find any .py file references in the bullet line
+        file_refs = _re.findall(r"`([^`]+\.py)`|([\w./]+\.py)", line)
+        dest_dir = shared / component_name
+        copied = 0
+
+        for ref_tuple in file_refs:
+            ref = (ref_tuple[0] or ref_tuple[1]).lstrip("/")
+            candidates = [
+                ws_path / ref,
+                ws_path / pathlib.Path(ref).name,
+                *list(ws_path.rglob(pathlib.Path(ref).name)),
+            ]
+            for candidate in candidates:
+                if candidate.exists() and candidate.is_file():
+                    dest_dir.mkdir(parents=True, exist_ok=True)
+                    _shutil.copy2(candidate, dest_dir / candidate.name)
+                    copied += 1
+                    break
+
+        # Log entry whether or not we found the file — metadata is still useful
+        desc = line[:120]
+        log_entry = f"- {component_name}: {desc} (source: {title})\n"
+        tools_log.parent.mkdir(parents=True, exist_ok=True)
+        existing = tools_log.read_text(encoding="utf-8") if tools_log.exists() else ""
+        if component_name not in existing:
+            with tools_log.open("a", encoding="utf-8") as f:
+                f.write(log_entry)
+            extracted.append(component_name)
+
+    if extracted:
+        print(f"  [shared_libs] {len(extracted)} component(s) from '{title}': {', '.join(extracted)}")
 
 
 def _advance_phase(
