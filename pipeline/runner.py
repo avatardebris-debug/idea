@@ -395,13 +395,21 @@ class AgentSupervisor:
 _seeded_this_session: set[str] = set()  # titles seeded in this runner invocation
 
 
-def seed_idea(bus: MessageBus, title: str, description: str) -> None:
+def seed_idea(bus: MessageBus, title: str, description: str, deps: list | None = None) -> None:
     """Send the initial idea to the Idea Planner to kick off the pipeline."""
     if title in _seeded_this_session:
         return  # already seeded this run — don't duplicate
     _seeded_this_session.add(title)
 
     idea_slug = _slugify(title)
+
+    # Resolve dependency workspace paths so idea_planner can read existing interfaces
+    dep_workspaces: dict = {}
+    if deps:
+        for dep_slug in deps:
+            ws = PIPELINE_DIR / "projects" / dep_slug / "workspace"
+            if ws.exists():
+                dep_workspaces[dep_slug] = str(ws)
 
     msg = Message.create(
         from_agent="runner",
@@ -411,17 +419,26 @@ def seed_idea(bus: MessageBus, title: str, description: str) -> None:
             "title": title,
             "idea": description,
             "idea_slug": idea_slug,
+            "depends_on": deps or [],
+            "dep_workspaces": dep_workspaces,
         },
     )
     bus.send(msg)
-    print(f"\n  📋 Seeded idea: {title} (slug: {idea_slug})")
+    dep_note = f" [deps: {', '.join(deps)}]" if deps else ""
+    print(f"\n  Seeded idea: {title} (slug: {idea_slug}){dep_note}")
 
 
 def seed_from_master_list(bus: MessageBus) -> bool:
-    """Find the first unchecked idea in master_ideas.md and seed it.
+    """Find the first unchecked, unblocked idea in master_ideas.md and seed it.
 
-    Skips ideas that already have project state (in-progress or completed)
-    so partial projects can resume naturally from restored queues.
+    Dependency syntax (append to description):
+        requires: slug_one, slug_two
+
+    Example master_ideas.md line:
+        - [ ] **[Movie idea generator]** — [generate movie ideas. requires: ai_movie_generation_suite]
+
+    Blocked ideas (deps not yet complete) are skipped with a status message.
+    They unblock automatically once their dependencies reach 'complete'.
     """
     mi_path = PROJECT_ROOT.resolve() / "master_ideas.md"
     if not mi_path.exists():
@@ -430,39 +447,71 @@ def seed_from_master_list(bus: MessageBus) -> bool:
 
     import re
     content = mi_path.read_text(encoding="utf-8")
+    blocked_count = 0
+
     for line in content.split("\n"):
         match = re.match(r"- \[ \]\s+\*\*(.+?)\*\*\s*[—–-]\s*(.*)", line)
-        if match:
-            title = match.group(1).strip()
-            if title in _seeded_this_session:
-                continue  # already in progress this session — skip
+        if not match:
+            continue
 
-            slug = _slugify(title)
-            project_state = PIPELINE_DIR / "projects" / slug / "state" / "current_idea.json"
+        title = match.group(1).strip()
+        if title in _seeded_this_session:
+            continue
 
-            if project_state.exists():
-                # Project already has work done — skip seeding, let queues resume it.
-                # If queues are empty and it's stuck, the user can delete the state
-                # to force a re-seed: rm .pipeline/projects/<slug>/state/current_idea.json
+        slug = _slugify(title)
+        project_state = PIPELINE_DIR / "projects" / slug / "state" / "current_idea.json"
+
+        if project_state.exists():
+            try:
+                state = json.loads(project_state.read_text(encoding="utf-8"))
+                status = state.get("status", "?")
+                if status in ("complete", "budget_exceeded"):
+                    _seeded_this_session.add(title)
+                    continue
+                else:
+                    print(f"  ⏭  Skipping '{title}' — already in progress ({status}), resuming from queue")
+                    _seeded_this_session.add(title)
+                    continue
+            except Exception:
+                pass  # Can't read state — seed it fresh
+
+        description_raw = match.group(2).strip()
+
+        # --- Parse 'requires: slug1, slug2' dependency declarations ---
+        dep_match = re.search(r'\brequires:\s*([\w,\s_-]+)$', description_raw, re.IGNORECASE)
+        deps: list = []
+        description = description_raw
+        if dep_match:
+            raw_deps = dep_match.group(1)
+            deps = [d.strip() for d in re.split(r'[,;]+', raw_deps) if d.strip()]
+            description = description_raw[:dep_match.start()].strip().rstrip('.')
+
+        # --- Check all dependencies are complete before seeding ---
+        if deps:
+            blocking: list = []
+            for dep_slug in deps:
+                dep_state_file = PIPELINE_DIR / "projects" / dep_slug / "state" / "current_idea.json"
+                if not dep_state_file.exists():
+                    blocking.append(f"{dep_slug} (not started)")
+                    continue
                 try:
-                    state = json.loads(project_state.read_text(encoding="utf-8"))
-                    status = state.get("status", "?")
-                    if status in ("complete", "budget_exceeded"):
-                        # Finished — skip entirely
-                        _seeded_this_session.add(title)
-                        continue
-                    else:
-                        print(f"  ⏭  Skipping '{title}' — already in progress ({status}), resuming from queue")
-                        _seeded_this_session.add(title)  # don't try again this session
-                        continue
+                    dep_state = json.loads(dep_state_file.read_text(encoding="utf-8"))
+                    if dep_state.get("status") not in ("complete", "budget_exceeded"):
+                        blocking.append(f"{dep_slug} ({dep_state.get('status', '?')})")
                 except Exception:
-                    pass  # Can't read state — seed it fresh
+                    blocking.append(f"{dep_slug} (unreadable)")
+            if blocking:
+                blocked_count += 1
+                print(f"  ⏸  '{title}' blocked — waiting for: {', '.join(blocking)}")
+                continue  # try the next idea in the list
 
-            description = match.group(2).strip()
-            seed_idea(bus, title, description)
-            return True
+        seed_idea(bus, title, description, deps=deps or None)
+        return True
 
-    print("  ✗ No unchecked ideas found in master_ideas.md")
+    if blocked_count > 0:
+        print(f"  ⏸  {blocked_count} idea(s) blocked on dependencies — will retry next tick")
+    else:
+        print("  ✗ No unchecked ideas found in master_ideas.md")
     return False
 
 

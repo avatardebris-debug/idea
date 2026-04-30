@@ -31,11 +31,40 @@ class IdeaPlannerAgent(AgentProcess):
         idea_title = msg.payload.get("title", "Untitled Idea")
         idea_slug = msg.payload.get("idea_slug", self._current_slug)
 
+        depends_on: list = msg.payload.get("depends_on", [])
+        dep_workspaces: dict = msg.payload.get("dep_workspaces", {})
+
         master_plan_path = self._project_path("state/master_plan.md")
+
+        # Build dependency context block if this project integrates with others
+        dep_context = ""
+        if depends_on and dep_workspaces:
+            dep_lines = []
+            for dep_slug, ws_path in dep_workspaces.items():
+                dep_lines.append(
+                    f"  - **{dep_slug}**: workspace at `{ws_path}`\n"
+                    f"    Use `list_tree` on this path to discover its API surface,\n"
+                    f"    data models, and file structure BEFORE writing your plan.\n"
+                    f"    Your plan MUST be compatible with these existing interfaces."
+                )
+            dep_context = (
+                f"## Dependencies (existing projects to integrate with)\n"
+                + "\n".join(dep_lines)
+                + "\n\nIMPORTANT: Read the dependency workspaces above before planning. "
+                + "Your master plan must specify exactly which files/classes/functions "
+                + "from the dependencies this project will import and extend.\n\n"
+            )
+        elif depends_on:
+            # Deps declared but workspaces not built yet (shouldn't happen, but be safe)
+            dep_context = (
+                f"## Dependencies\nThis project depends on: {', '.join(depends_on)}.\n"
+                f"Design your plan to integrate cleanly with these projects.\n\n"
+            )
 
         task_prompt = (
             f"You are the Idea Planner. Create a multi-phase implementation plan.\n\n"
             f"## Idea\n**{idea_title}**\n\n{idea_description}\n\n"
+            + dep_context +
             f"## Instructions\n"
             f"1. Analyze the idea and identify the core deliverable.\n"
             f"2. Break it into exactly 3 phases by default. Phase 1 must be the smallest\n"
@@ -48,6 +77,7 @@ class IdeaPlannerAgent(AgentProcess):
         )
 
         result = self.call_agent(task=task_prompt, verbose=False)
+
 
         # Read the master plan to extract Phase 1
         master_plan = self.read_state_file("state/master_plan.md")
@@ -79,7 +109,9 @@ class IdeaPlannerAgent(AgentProcess):
             "phase": 1,
             "total_phases": self._count_phases(master_plan),
             "started_at": datetime.now(timezone.utc).isoformat(),
+            "depends_on": depends_on,
         })
+
 
         # Send Phase 1 to Phase Planner
         out_msg = Message.create(
