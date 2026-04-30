@@ -93,17 +93,28 @@ def _check_ollama_model(model: str) -> None:
         print(f"\n  ❌ Ollama not reachable at {base_url}: {e}")
         print(f"     Start Ollama first: ollama serve &")
         sys.exit(1)
-
-    # 2. Check model exists
+    # 2. Check model exists — resolve the EXACT canonical name from the API.
+    # Ollama may normalize case (q4_K_M → q4_k_m) internally even though
+    # `ollama list` shows the original case. Using the API name prevents 404s.
     available = [m.get("name", "") for m in data.get("models", [])]
-    # Ollama uses "model:tag" format; match with and without tag
-    model_base = model.split(":")[0]
-    found = any(model_base in m for m in available)
-    if not found:
+    model_base = model.split(":")[0].lower()
+    model_tag  = model.split(":")[1].lower() if ":" in model else ""
+
+    # Try exact match first, then case-insensitive match
+    canonical = next((m for m in available if m.lower() == model.lower()), None)
+    if canonical is None:
+        # Partial match on base name
+        canonical = next((m for m in available if model_base in m.lower()), None)
+
+    if canonical is None:
         print(f"\n  ❌ Model '{model}' not found in Ollama.")
         print(f"     Available: {', '.join(available) or '(none)'}")
         print(f"     Pull it:   ollama pull {model}")
         sys.exit(1)
+
+    if canonical != model:
+        print(f"  Model name resolved: '{model}' -> '{canonical}' (using API canonical name)")
+        model = canonical  # Use the exact name the API knows about
 
     # 3. Warm up: trigger a tiny inference to load model into VRAM
     print(f"  Model:    {model} (warming up...)", end="", flush=True)
@@ -148,6 +159,8 @@ def _check_ollama_model(model: str) -> None:
             print(f"  ⚠️  GPU:   No models loaded after warmup — check Ollama GPU config")
     except Exception:
         pass  # Non-critical
+
+    return model  # Return canonical model name for caller to use
 
 
 def _check_ollama_heartbeat(model: str, _last_ok: list = [0.0]) -> str:
@@ -1124,7 +1137,7 @@ def run_pipeline(
 
     # --- Ollama pre-flight check ---
     if provider == "ollama":
-        _check_ollama_model(model)
+        model = _check_ollama_model(model)  # Returns canonical API name (may differ in case)
 
     # Start all agents
     print(f"\n  Starting agents...")
