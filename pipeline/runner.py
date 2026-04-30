@@ -114,11 +114,12 @@ def _check_ollama_model(model: str) -> None:
                 "model": model,
                 "prompt": "/no_think say OK",
                 "stream": False,
+                "keep_alive": -1,           # pin model in VRAM after warmup
                 "options": {"num_predict": 5},
             }).encode(),
             headers={"Content-Type": "application/json"},
         )
-        resp = urllib.request.urlopen(req, timeout=120)
+        resp = urllib.request.urlopen(req, timeout=300)  # 5 min — large models take time
         result = json.loads(resp.read())
         # Check if response came back
         if result.get("response", "").strip():
@@ -188,7 +189,7 @@ def _check_ollama_heartbeat(model: str, _last_ok: list = [0.0]) -> str:
                     data=payload,
                     headers={"Content-Type": "application/json"},
                 )
-                urllib.request.urlopen(req, timeout=30)
+                urllib.request.urlopen(req, timeout=180)  # 3 min for 23GB model reload
                 return "gpu=RELOADING"
             except Exception:
                 return "gpu=IDLE"
