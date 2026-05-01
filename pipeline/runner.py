@@ -64,7 +64,7 @@ AGENT_ROLES = [
 # Maximum wall-clock time per project before force-completing (minutes).
 # 90 min = enough for 3 phases × ~25 min each.  Prevents any single project
 # from monopolizing an unattended pipeline run.
-PROJECT_TIME_BUDGET = 90
+PROJECT_TIME_BUDGET = 90   # minutes per project — SCALES with total_phases (see budget enforcement)
 
 # ---------------------------------------------------------------------------
 # Ollama health checks
@@ -781,8 +781,9 @@ def _rebuild_queues_from_state(bus: MessageBus) -> int:
     return 0  # No incomplete projects found
 
 
-# Maximum reviewer→executor round-trips per phase before force-advancing
-MAX_PHASE_RETRIES = 12
+# Maximum reviewer->executor round-trips per phase before force-advancing
+# 5 attempts = ~25-35 min max per stuck phase (saves 40+ min vs old limit of 12)
+MAX_PHASE_RETRIES = 5
 
 
 def _tick_project(
@@ -1279,21 +1280,31 @@ def run_pipeline(
                     try:
                         _start = datetime.fromisoformat(_active_started)
                         _elapsed = (datetime.now(timezone.utc) - _start).total_seconds() / 60
-                        if _elapsed > PROJECT_TIME_BUDGET:
+
+                        # Budget scales with complexity: 30 min per phase, min 90 min
+                        _total_phases = idea_state.get("total_phases", 3)
+                        _phase_budget = max(PROJECT_TIME_BUDGET, int(_total_phases) * 30)
+
+                        # Grace: don't kill a project on its FINAL phase — let it finish
+                        _current_phase = idea_state.get("phase", 1)
+                        _on_final_phase = (isinstance(_current_phase, int) and
+                                           isinstance(_total_phases, int) and
+                                           _current_phase >= _total_phases)
+                        # Allow 50% extra time if on final phase
+                        if _on_final_phase:
+                            _phase_budget = int(_phase_budget * 1.5)
+
+                        if _elapsed > _phase_budget:
                             _proj_file = PIPELINE_DIR / "projects" / _active_slug / "state" / "current_idea.json"
                             idea_state["status"] = "budget_exceeded"
-                            idea_state["budget_note"] = f"Force-completed after {_elapsed:.0f} min (budget: {PROJECT_TIME_BUDGET} min)"
+                            idea_state["budget_note"] = f"Force-completed after {_elapsed:.0f} min (budget: {_phase_budget} min for {_total_phases}-phase project)"
                             _proj_file.write_text(json.dumps(idea_state, indent=2), encoding="utf-8")
-                            print(f"  💰 Budget exceeded for '{idea_state.get('title', _active_slug)}' ({_elapsed:.0f}m > {PROJECT_TIME_BUDGET}m) — skipping")
-                            # Clear ALL queue messages (pending + processing) so the
-                            # pipeline can immediately advance to the next project.
-                            # reset_stale_processing() only handles 'processing';
-                            # we also need to drop any 'pending' messages.
+                            print(f"  Budget exceeded for '{idea_state.get('title', _active_slug)}' ({_elapsed:.0f}m > {_phase_budget}m [{_total_phases} phases]) -- skipping")
                             cleared = 0
                             for _role in AGENT_ROLES:
                                 cleared += bus.clear_queue(_role)
                             if cleared:
-                                print(f"  🧹 Cleared {cleared} queued message(s) for budget-exceeded project")
+                                print(f"  Cleared {cleared} queued message(s) for budget-exceeded project")
                     except Exception:
                         pass
 
