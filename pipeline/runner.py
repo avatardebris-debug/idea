@@ -476,9 +476,13 @@ def seed_from_master_list(bus: MessageBus) -> bool:
                 pass  # Can't read state — seed it fresh
 
         description_raw = match.group(2).strip()
+        # Strip outer brackets from description if present: [text] -> text
+        if description_raw.startswith("[") and description_raw.endswith("]"):
+            description_raw = description_raw[1:-1].strip()
 
         # --- Parse 'requires: slug1, slug2' dependency declarations ---
-        dep_match = re.search(r'\brequires:\s*([\w,\s_-]+)$', description_raw, re.IGNORECASE)
+        # Handles trailing ] from markdown format e.g. [desc. requires: slug]
+        dep_match = re.search(r'\brequires:\s*([\w,\s_-]+?)[\]\s.]*$', description_raw, re.IGNORECASE)
         deps: list = []
         description = description_raw
         if dep_match:
@@ -502,14 +506,14 @@ def seed_from_master_list(bus: MessageBus) -> bool:
                     blocking.append(f"{dep_slug} (unreadable)")
             if blocking:
                 blocked_count += 1
-                print(f"  ⏸  '{title}' blocked — waiting for: {', '.join(blocking)}")
+                print(f"  [blocked]  '{title}' blocked - waiting for: {', '.join(blocking)}")
                 continue  # try the next idea in the list
 
         seed_idea(bus, title, description, deps=deps or None)
         return True
 
     if blocked_count > 0:
-        print(f"  ⏸  {blocked_count} idea(s) blocked on dependencies — will retry next tick")
+        print(f"  [BLOCKED] {blocked_count} idea(s) blocked on dependencies -- will retry next tick")
     else:
         print("  ✗ No unchecked ideas found in master_ideas.md")
     return False
