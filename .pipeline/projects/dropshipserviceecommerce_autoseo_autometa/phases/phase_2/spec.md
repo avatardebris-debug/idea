@@ -10,3 +10,4 @@
 - Validate generated meta against platform constraints (length, special chars)
 - Integration tests with sample Shopify/WooCommerce CSVs
 - Add `--provider ollama|openai` CLI flag
+

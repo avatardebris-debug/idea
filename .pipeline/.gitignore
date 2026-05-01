@@ -1,0 +1,17 @@
+# Never commit node_modules or build artifacts
+**/node_modules/
+**/__pycache__/
+**/*.pyc
+**/.pytest_cache/
+**/*.egg-info/
+**/dist/
+**/build/
+**/.venv/
+**/.env
+
+# Never commit double-nested .pipeline inside .pipeline
+.pipeline/
+
+# Logs (large, not needed for resume)
+logs/
+*.log

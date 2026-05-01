@@ -8,3 +8,4 @@
 - Implement keyword-based job filtering
 - Write integration tests with mock HTML fixtures
 - Add rate limiting and random delays to avoid detection
+

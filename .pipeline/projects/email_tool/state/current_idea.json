@@ -1,12 +1,12 @@
 {
   "title": "[email tool]",
   "description": "[email processing, rules, systems, agentic instruction, systems, automations. TOol for automating the searching in emails and attachments to follow rules and organize into folders according to these rules]",
-  "status": "phase_6_executing",
+  "status": "budget_exceeded",
   "total_phases": 6,
-  "started_at": "2026-04-29T05:36:50.013067+00:00",
+  "started_at": "2026-05-01T05:51:43.360437+00:00",
   "phase": 6,
-  "tasks_done": 0,
+  "tasks_done": 2,
   "tasks_total": 8,
   "_slug": "email_tool",
-  "budget_note": "Force-completed after 113 min (budget: 90 min)"
+  "budget_note": "Force-completed after 91 min (budget: 90 min)"
 }

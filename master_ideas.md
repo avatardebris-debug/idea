@@ -7,7 +7,7 @@ Ideas are processed top-to-bottom. The pipeline picks the first unchecked `[ ]` 
 
 ## Ideas
 
-- [ ] **[email tool]** — [email processing, rules, systems, agentic instruction, systems, automations. TOol for automating the searching in emails and attachments to follow rules and organize into folders according to these rules. Ability to export emails or systematize an export/import.]
+- [x] **[email tool]** — [email processing, rules, systems, agentic instruction, systems, automations. TOol for automating the searching in emails and attachments to follow rules and organize into folders according to these rules. Ability to export emails or systematize an export/import.]
 
 - [ ] **[social media management/etc]** — [airtable like platform or system for managing social media posts and accounts. AI can help generate content and schedule posts and scale]
 
@@ -40,7 +40,7 @@ Ideas are processed top-to-bottom. The pipeline picks the first unchecked `[ ]` 
 
 - [ ] **CSV Analyzer** — Build a Python CLI tool that reads a CSV file and prints summary statistics (row count, column names, min/max/mean for numeric columns, null counts). Include argparse, error handling for missing files and malformed CSVs, and unit tests with sample fixture files.
 
-- [ ] **File Deduplicator** — Build a Python script that scans a directory recursively, finds duplicate files by MD5 hash, and prints a report of duplicates grouped by hash. Optionally deletes duplicates with a --delete flag (with dry-run mode). Include unit tests.
+- [x] **File Deduplicator** — Build a Python script that scans a directory recursively, finds duplicate files by MD5 hash, and prints a report of duplicates grouped by hash. Optionally deletes duplicates with a --delete flag (with dry-run mode). Include unit tests.
 
 - [ ] **Markdown to HTML Converter** — Build a Python CLI that converts a markdown file to a standalone HTML file with basic CSS styling. Support headers, bold, italic, code blocks, and links. Include unit tests for each element type.
 
@@ -69,4 +69,4 @@ Ideas are processed top-to-bottom. The pipeline picks the first unchecked `[ ]` 
 
 - [ ] **[fiverr job automation tool]** — [create automated tasks on fiverr.]
 
-- [ ] **[drop servicing tool]** — [store SOPs and workflows and enable LLM scaling and agentic scaling for perfoming bulk tasks.]
+- [x] **[drop servicing tool]** — [store SOPs and workflows and enable LLM scaling and agentic scaling for perfoming bulk tasks.]

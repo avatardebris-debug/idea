@@ -4,3 +4,6 @@
 - validate_input: **`validate_input` helper** (`drop_servicing_tool/sop_schema.py`) — Generic input validation against a declared schema w (source: [drop servicing tool])
 - sops_dir: **`SOPS_DIR` / `PROMPTS_DIR` config pattern** (`drop_servicing_tool/config.py`) — Environment-variable-overridable path  (source: [drop servicing tool])
 - steplog: **`StepLog` dataclass** (`drop_servicing_tool/executor.py`) — A structured execution log entry with step name, prompt, o (source: [drop servicing tool])
+- custom_exceptions: **Exception hierarchy** (`src/utils/exceptions.py`) — Typed exception classes (APIError, AuthenticationError, RateLimitError, etc.) with structured details (source: /workspace/idea impl/.pipeline/projects/fiverr_job_automation_tool/workspace)
+- logging_utils: **Logger setup utility** (`src/utils/logger.py`) — `setup_logger`/`get_logger` with file + console handlers and auto-directory creation (source: /workspace/idea impl/.pipeline/projects/fiverr_job_automation_tool/workspace)
+- http_client_wrapper: **HTTP client wrapper** (`src/api/client.py`) — `FiverrAPIClient` with Session management, Bearer auth, and HTTP method shortcuts (source: /workspace/idea impl/.pipeline/projects/fiverr_job_automation_tool/workspace)

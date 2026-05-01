@@ -10,3 +10,4 @@
 - Cache API results to SQLite to avoid re-fetching
 - Update CLI: `search <topic> --top N --min-rating X --max-price Y`
 - Integration tests with recorded API fixtures
+

@@ -2,27 +2,27 @@
   "progress": [
     {
       "concept_id": "test_concept",
-      "attempts": 234,
-      "average_score": 85.00000000000001,
-      "total_time_minutes": 5850,
+      "attempts": 351,
+      "average_score": 84.99999999999999,
+      "total_time_minutes": 8775,
       "difficulty_rating": 7,
-      "last_attempt_date": "2026-04-30T08:59:18.967021"
+      "last_attempt_date": "2026-04-30T22:39:18.863508"
     },
     {
       "concept_id": "concept_1",
-      "attempts": 233,
+      "attempts": 350,
       "average_score": 85.0,
-      "total_time_minutes": 6990,
+      "total_time_minutes": 10500,
       "difficulty_rating": null,
-      "last_attempt_date": "2026-04-30T08:59:18.985167"
+      "last_attempt_date": "2026-04-30T22:39:18.896381"
     },
     {
       "concept_id": "concept_2",
-      "attempts": 155,
+      "attempts": 233,
       "average_score": 90.0,
-      "total_time_minutes": 6975,
+      "total_time_minutes": 10485,
       "difficulty_rating": null,
-      "last_attempt_date": "2026-04-30T08:59:18.985572"
+      "last_attempt_date": "2026-04-30T22:39:18.897216"
     }
   ]
 }

@@ -18,8 +18,8 @@ from email_tool.attachment_parsers.base import (
 from email_tool.attachment_parsers.pdf import PDFAttachmentParser
 from email_tool.attachment_parsers.office import OfficeAttachmentParser
 from email_tool.attachment_parsers.text import TextAttachmentParser
-from email_tool.attachment_parsers.image import ImageAttachmentParser
-from email_tool.attachment_parsers.zip import ZipAttachmentParser
+from email_tool.attachment_parsers.image_parser import ImageAttachmentParser
+from email_tool.attachment_parsers.zip_parser import ZipAttachmentParser
 
 from email_tool.models import (
     Email,
