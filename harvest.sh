@@ -1,61 +1,75 @@
 #!/bin/bash
-# harvest.sh — commit all pipeline state to git so nothing is ever lost
-# Run on cloud: bash harvest.sh
-# This is the ONLY safe way to preserve work. The zip download only captures
-# what's on disk — this ensures everything is in git too.
+# harvest.sh — save pipeline state to a zip and serve it for download
+#
+# Run on cloud:  bash harvest.sh
+# Then on your LOCAL machine open:  http://<instance-ip>:<port>/
+# and click the zip file to download it.
+#
+# Ports: vast.ai exposes whatever port you specify.  Default is 8000.
+#   Override:  PORT=9000 bash harvest.sh
 
 set -e
 cd "$(dirname "$0")"
 
+PORT="${PORT:-8000}"
+
 echo "=== Stopping any running pipeline ==="
-pkill -f "pipeline/runner.py" 2>/dev/null || true
-sleep 1
+pkill -f "pipeline/runner.py" 2>/dev/null && echo "  Pipeline stopped." || echo "  (No pipeline running)"
+sleep 2
 
 echo ""
-echo "=== Running fix_missing_plans.py (reconstruct any missing master_plan.md) ==="
-python fix_missing_plans.py 2>/dev/null | grep -E "(plan created|state fixed|Done:)" || true
-
-echo ""
-echo "=== Committing ALL .pipeline/projects/ state to git ==="
-git add .pipeline/projects/ master_ideas.md 2>/dev/null || true
-
-# Only commit if there's something to commit
-if git diff --cached --quiet; then
-    echo "  Nothing new to commit — already up to date"
-else
-    TIMESTAMP=$(date +%Y%m%d_%H%M)
-    PROJ_COUNT=$(git diff --cached --name-only | grep "current_idea.json" | wc -l)
-    git commit -m "harvest: pipeline state snapshot $TIMESTAMP ($PROJ_COUNT projects)"
-    echo "  ✓ Committed"
-fi
-
-echo ""
-echo "=== Pushing to remote ==="
-git push
-echo "  ✓ Pushed"
-
-echo ""
-echo "=== Project Summary ==="
-python -c "
+echo "=== Project Status ==="
+python3 -c "
 import json, pathlib
 projects = sorted(pathlib.Path('.pipeline/projects').glob('*/state/current_idea.json'))
 complete = []; active = []; stalled = []
 for f in projects:
-    d = json.loads(f.read_text())
+    try:
+        d = json.loads(f.read_text())
+    except Exception:
+        continue
     slug = f.parent.parent.name
     st   = d.get('status', '?')
     ph   = d.get('phase', '?')
     tot  = d.get('total_phases', '?')
-    has_plan = (f.parent / 'master_plan.md').exists()
-    plan_flag = '' if has_plan else ' ⚠ NO PLAN'
-    line = f'  {slug[:40]:40s} {st:28s} phase={ph}/{tot}{plan_flag}'
+    line = f'  {slug[:38]:38s} {st:28s} phase={ph}/{tot}'
     if st in ('complete',): complete.append(line)
     elif st in ('budget_exceeded', 'stalled'): stalled.append(line)
     else: active.append(line)
-print(f'Complete ({len(complete)}):')
-for l in complete: print(l)
-print(f'Active ({len(active)}):')
-for l in active: print(l)
-print(f'Stalled ({len(stalled)}):')
-for l in stalled: print(l)
+print(f'Complete  ({len(complete)}):'); [print(l) for l in complete]
+print(f'Active    ({len(active)}):');   [print(l) for l in active]
+print(f'Stalled   ({len(stalled)}):');  [print(l) for l in stalled]
+print(f'TOTAL: {len(projects)} projects')
 "
+
+echo ""
+echo "=== Building zip ==="
+python3 extract.py
+# Grab the filename that was just created (newest zip in this dir)
+ZIP=$(ls -t pipeline_extract_*.zip 2>/dev/null | head -1)
+
+if [ -z "$ZIP" ]; then
+    echo "ERROR: extract.py did not produce a zip file."
+    exit 1
+fi
+
+SIZE=$(du -sh "$ZIP" | cut -f1)
+echo "  Created: $ZIP  ($SIZE)"
+
+echo ""
+echo "============================================================"
+echo "  Download your zip:"
+echo ""
+echo "  Open this URL in your browser:"
+echo "    http://$(hostname -I | awk '{print $1}'):${PORT}/"
+echo ""
+echo "  Or if using vast.ai port mapping, use your instance's"
+echo "  mapped external port for port ${PORT}."
+echo ""
+echo "  Serving files from: $(pwd)"
+echo "  Press Ctrl+C when download is complete."
+echo "============================================================"
+echo ""
+
+# Serve the current directory so user can click the zip to download
+python3 -m http.server "$PORT"
