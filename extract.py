@@ -174,6 +174,23 @@ def build_zip(
                     arcname = sf.relative_to(pipeline_dir.parent)
                     zf.write(sf, arcname)
                     included += 1
+                # Also include reusable_tools.md (the shared library index)
+                rtmd = state_dir / "reusable_tools.md"
+                if rtmd.exists():
+                    zf.write(rtmd, rtmd.relative_to(pipeline_dir.parent))
+                    included += 1
+
+            # --- Shared libs (reusable tool library accumulated across projects) ---
+            shared_libs_dir = pipeline_dir / "shared_libs"
+            if shared_libs_dir.exists():
+                for file in shared_libs_dir.rglob("*"):
+                    if not file.is_file():
+                        continue
+                    if file.name.startswith("."):
+                        continue
+                    arcname = file.relative_to(pipeline_dir.parent)
+                    zf.write(file, arcname)
+                    included += 1
 
         # --- master_ideas.md ---
         mi = pipeline_dir.parent / "master_ideas.md"
@@ -181,6 +198,12 @@ def build_zip(
             zf.write(mi, mi.name)
 
         # --- Manifest ---
+        # Count shared_libs files for manifest
+        shared_libs_count = 0
+        shared_libs_dir = pipeline_dir / "shared_libs"
+        if shared_libs_dir.exists():
+            shared_libs_count = sum(1 for f in shared_libs_dir.rglob("*") if f.is_file())
+
         summaries = [
             get_project_summary(p)
             for p in sorted(projects_dir.iterdir())
@@ -190,11 +213,13 @@ def build_zip(
             "extracted_at": datetime.now().isoformat(),
             "workspace_only": workspace_only,
             "files_included": included,
+            "shared_libs_included": shared_libs_count,
             "resume_instructions": (
                 "1. git pull on new instance\n"
                 "2. unzip this file into /workspace/idea\\ impl/\n"
                 "3. python pipeline/runner.py --from-list --provider ollama --model qwen3.5:35b\n"
-                "   Runner will auto-detect in-progress projects and re-queue them."
+                "   Runner will auto-detect in-progress projects and re-queue them.\n"
+                "   Shared libs are in .pipeline/shared_libs/ — executor uses them automatically."
             ),
             "projects": summaries,
         }
