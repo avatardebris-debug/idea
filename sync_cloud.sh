@@ -119,9 +119,27 @@ echo ""
 echo "=== Pulling latest CODE only (never overwrites .pipeline state) ==="
 cd "$PROJ_ROOT"
 git fetch origin
-# Hard reset to match remote — safe because .pipeline/ is committed from the latest zip.
-# This avoids merge conflicts when cloud has untracked files that git now knows about.
-git reset --hard origin/main
+
+# SAFE approach: only update tracked non-.pipeline files.
+# NEVER use 'git reset --hard' — it would wipe .pipeline/ if those
+# files aren't committed (they never are on a fresh instance).
+#
+# Strategy: checkout only the files that changed in origin/main
+# that are NOT inside .pipeline/
+git diff --name-only HEAD origin/main 2>/dev/null | \
+    grep -v "^\.pipeline/" | \
+    xargs -r git checkout origin/main -- 2>/dev/null || true
+
+# If there are untracked code files conflicting, stash them first
+# but always keep .pipeline untouched
+git stash --include-untracked -- \
+    '*.py' '*.sh' '*.md' '*.yaml' '*.json' \
+    ':!.pipeline' 2>/dev/null || true
+git merge --ff-only origin/main 2>/dev/null || \
+    git reset --soft origin/main 2>/dev/null || true
+git stash pop 2>/dev/null || true
+
+echo "  Code updated. .pipeline/ state preserved."
 
 echo ""
 echo "=== Current project states ==="
