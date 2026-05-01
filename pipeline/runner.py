@@ -735,10 +735,29 @@ def _rebuild_queues_from_state(bus: MessageBus) -> int:
 
 
         elif phase_step == "validating":
-            agent   = "validator"
-            payload = {"phase": phase_num, "tasks_path": tasks_path,
-                       "workspace_path": workspace_path,
-                       "validation_report_path": report_path, "idea_slug": slug}
+            agent = "validator"
+            # Check if there's an existing failed report — if so, treat this as a
+            # fix_required re-queue so the validator's retry/no-progress counter
+            # doesn't reset (the runner re-queue was resetting it each time).
+            existing_report = ""
+            report_file = project_dir / report_path
+            if report_file.exists():
+                try:
+                    existing_report = report_file.read_text(encoding="utf-8")[:3000]
+                except Exception:
+                    pass
+            has_failures = existing_report and "Verdict: PASS" not in existing_report
+            payload = {
+                "phase": phase_num,
+                "tasks_path": tasks_path,
+                "workspace_path": workspace_path,
+                "validation_report_path": report_path,
+                "idea_slug": slug,
+                # Preserve retry context so validator doesn't treat this as fresh start
+                "fix_required": has_failures,
+                "validation_report": existing_report if has_failures else "",
+                "error_summary": "Re-queued by runner after stall detection — continue fixing failures." if has_failures else "",
+            }
         elif phase_step == "reviewing":
             agent   = "reviewer"
             payload = {"phase": phase_num, "tasks_path": tasks_path,

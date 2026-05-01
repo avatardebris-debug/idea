@@ -407,7 +407,7 @@ class ValidatorAgent(AgentProcess):
         else:
             # Progress-aware retry: keep going as long as failures are decreasing.
             # Only escalate when N consecutive cycles make zero improvement.
-            NO_PROGRESS_LIMIT = 2  # consecutive stale cycles before force-advancing
+            NO_PROGRESS_LIMIT = 3  # consecutive stale cycles before force-advancing
 
             retry_key      = f"validator_phase_{phase_num}"
             prev_fail_key  = f"validator_phase_{phase_num}_prev_failures"
@@ -437,7 +437,7 @@ class ValidatorAgent(AgentProcess):
             prev_failures  = retry_data.get(prev_fail_key, current_failures + 1)
             no_progress    = retry_data.get(streak_key, 0)
             retry_count    = retry_data.get(retry_key, 0) + 1
-            MAX_VALIDATOR_ATTEMPTS = 6  # absolute cap regardless of progress
+            MAX_VALIDATOR_ATTEMPTS = 4  # absolute cap — ~80 min max per phase at 20min/cycle
             made_progress  = current_failures < prev_failures
 
             if made_progress:
