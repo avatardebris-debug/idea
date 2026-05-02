@@ -305,6 +305,10 @@ class AgentSupervisor:
         env = os.environ.copy()
         env["PYTHONPATH"] = str(PROJECT_ROOT) + os.pathsep + env.get("PYTHONPATH", "")
         env["PYTHONUTF8"] = "1"
+        # Pass model/provider as env vars so agent_process.DEFAULT_MODEL picks
+        # them up even if the argparse defaults are used instead of CLI args.
+        env["PIPELINE_MODEL"] = self.model
+        env["PIPELINE_PROVIDER"] = self.provider
 
         log_path = PIPELINE_DIR / "logs" / f"{role}.out"
         log_path.parent.mkdir(parents=True, exist_ok=True)
@@ -1124,7 +1128,7 @@ def run_pipeline(
     from_list: bool = False,
     resume: bool = False,
     provider: str = "ollama",
-    model: str = "qwen3.5:35b",
+    model: str = os.environ.get("PIPELINE_MODEL", "qwen3.5:35b"),
     time_limit_minutes: float = 0,
 ) -> None:
     """Main pipeline orchestrator."""
@@ -1486,8 +1490,8 @@ def main():
     parser.add_argument("--provider", default="ollama",
                         choices=["openai", "claude", "gemini", "ollama"],
                         help="LLM provider (default: ollama)")
-    parser.add_argument("--model", default="qwen3.5:35b",
-                        help="LLM model (default: qwen3.5:35b)")
+    parser.add_argument("--model", default=os.environ.get("PIPELINE_MODEL", "qwen3.5:35b"),
+                        help="LLM model (default: qwen3.5:35b, or $PIPELINE_MODEL env var)")
     parser.add_argument("--time-limit", type=float, default=0,
                         help="Time limit in minutes (0 = unlimited)")
 

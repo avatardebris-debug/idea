@@ -33,6 +33,13 @@ from pipeline.message_bus import MessageBus, Message
 
 logger = logging.getLogger(__name__)
 
+# Single source of truth for the default model.
+# The runner sets PIPELINE_MODEL env var before spawning agents so all
+# subprocesses automatically use the same model without hardcoding.
+# Override: PIPELINE_MODEL=qwen3.6:35b-a3b-q4_K_M python pipeline/runner.py ...
+DEFAULT_MODEL = os.environ.get("PIPELINE_MODEL", "qwen3.5:35b")
+DEFAULT_PROVIDER = os.environ.get("PIPELINE_PROVIDER", "ollama")
+
 # Always anchor .pipeline/ to the project root (this file's grandparent),
 # not the cwd — prevents /workspace/.pipeline vs /.pipeline splits.
 _PROJECT_ROOT = pathlib.Path(__file__).parent.parent.resolve()
@@ -88,8 +95,8 @@ class AgentProcess:
 
     def __init__(
         self,
-        provider: str = "ollama",
-        model: str = "qwen3.5:35b",
+        provider: str = DEFAULT_PROVIDER,
+        model: str = DEFAULT_MODEL,
         bus: MessageBus | None = None,
     ):
         self.provider = provider

@@ -166,7 +166,7 @@ else:
 
 echo ""
 echo "=== Ready. Run: ==="
-echo "  python pipeline/runner.py --from-list --provider ollama --model qwen3.5:35b --time-limit 600"
+echo "  python pipeline/runner.py --from-list --provider ollama --model qwen3.6:35b-a3b-q4_K_M --time-limit 600"
 
 echo ""
 echo "=== Auto-repairing any missing master_plan.md files ==="
