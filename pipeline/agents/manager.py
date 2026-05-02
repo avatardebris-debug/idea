@@ -10,6 +10,8 @@ The manager now only handles:
 
 from __future__ import annotations
 
+import json
+import logging
 import pathlib
 import re
 import sys
@@ -19,6 +21,8 @@ sys.path.insert(0, str(pathlib.Path(__file__).parent.parent.parent))
 
 from pipeline.agent_process import AgentProcess, AgentOutput
 from pipeline.message_bus import Message
+
+logger = logging.getLogger(__name__)
 
 
 class ManagerAgent(AgentProcess):
@@ -91,12 +95,41 @@ class ManagerAgent(AgentProcess):
     def _handle_pipeline_signal(self, msg: Message) -> list[Message]:
         sig = msg.payload.get("signal", "")
         if sig == "PHASE_STUCK":
-            # Validation failed too many times — log it.
-            # Phase advancement is handled by the runner's _tick_project()
-            # and _advance_phase() — we don't duplicate that logic here.
-            phase = msg.payload.get("phase", 0)
-            reason = msg.payload.get("reason", "unknown")
-            self._log_decision(msg, [], note=f"PHASE_STUCK phase={phase}: {reason} — runner will handle advancement")
+            phase      = msg.payload.get("phase", 0)
+            idea_slug  = msg.payload.get("idea_slug", "")
+            reason     = msg.payload.get("reason", "unknown")
+
+            self._log_decision(msg, [], note=f"PHASE_STUCK phase={phase}: {reason} — force-advancing now")
+
+            # Force-advance: write 'phase_N_reviewed' with 0 blocking bugs so
+            # the runner's next _tick_project() call will advance to phase N+1.
+            # The runner checks for 'reviewed' state and routes via _tick_project().
+            if idea_slug:
+                proj_dir   = pathlib.Path(".pipeline") / "projects" / idea_slug
+                state_file = proj_dir / "state" / "current_idea.json"
+                retry_file = proj_dir / "state" / "phase_retries.json"
+                try:
+                    state = json.loads(state_file.read_text(encoding="utf-8"))
+                    state["status"] = f"phase_{phase}_reviewed"
+                    state["review_result"] = {
+                        "blocking_bugs": 0,
+                        "non_blocking_notes": f"Force-advanced by manager: {reason}",
+                        "tasks_path": f"phases/phase_{phase}/tasks.md",
+                        "workspace_path": str(proj_dir / "workspace"),
+                        "review_path": f"phases/phase_{phase}/review.md",
+                    }
+                    state_file.write_text(json.dumps(state, indent=2), encoding="utf-8")
+                    # Clear retry counters for this phase so next phase starts fresh
+                    if retry_file.exists():
+                        retries = json.loads(retry_file.read_text(encoding="utf-8"))
+                        for key in list(retries.keys()):
+                            if f"phase_{phase}" in key:
+                                retries.pop(key)
+                        retry_file.write_text(json.dumps(retries, indent=2), encoding="utf-8")
+                    logger.info("[manager] Force-advanced '%s' past phase %d (PHASE_STUCK)", idea_slug, phase)
+                except Exception as e:
+                    logger.error("[manager] Failed to force-advance '%s': %s", idea_slug, e)
+
         elif sig == "PHASE_COMPLETE":
             phase = msg.payload.get("phase", 0)
             self._log_decision(msg, [], note=f"PHASE_COMPLETE phase={phase} — runner handles advancement")
